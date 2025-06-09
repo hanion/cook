@@ -107,6 +107,7 @@ inline static void print_indent(int indent) {
 }
 void token_print(Token t, int indent) {
 	print_indent(indent);
-	printf("token: %zu:%zu %s '%.*s'\n", t.line, t.column, token_name_cstr(t), (int)t.length, t.text);
+	printf("token: %3zu:%-3zu %-18s '%.*s'\n",
+		 t.line, t.column, token_name_cstr(t), (int)t.length, t.text);
 }
 

@@ -51,3 +51,4 @@ Statement* parse_statement           (Parser* p);
 Statement* parse_block_statement     (Parser* p);
 Statement* parse_expression_statement(Parser* p);
 
+void parser_dump(Parser* p);

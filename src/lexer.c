@@ -222,3 +222,12 @@ Token lexer_peek_next(Lexer* l) {
 	return lexer_next_token(&copy);
 }
 
+
+void lexer_dump(Lexer* l) {
+	Lexer copy = *l;
+	Token t = lexer_next_token(&copy);
+	while (t.type != TOKEN_END) {
+		token_print(t, 0);
+		t = lexer_next_token(&copy);
+	}
+}

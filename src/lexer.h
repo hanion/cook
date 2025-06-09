@@ -21,3 +21,5 @@ void lexer_skip_to_new_line(Lexer* l);
 
 Token lexer_next_token(Lexer* l);
 Token lexer_peek_next (Lexer* l);
+
+void lexer_dump(Lexer* l);

@@ -28,28 +28,9 @@ int main(int argc, char** argv) {
 	da_append_many(&source, program, strlen(program));
 	
 	Lexer lexer = lexer_new(source);
-
-// 	Lexer copy = lexer;
-// 	Token t = lexer_next_token(&copy);
-// 	while (t.type != TOKEN_END) {
-// 		printf("%s %.*s\n", token_name_cstr(t), (int)t.length, t.text);
-// 		t = lexer_next_token(&copy);
-// 	}
-// 	printf("======\n");
-
+	//lexer_dump(&lexer);
 	Parser parser = parser_new(&lexer);
-
-// 	Expression* e = parse_expression(&parser);
-// 	while (e != NULL) {
-// 		expression_print(e, 0);
-// 		e = parse_expression(&parser);
-// 	}
-
-	StatementList sl = parser_parse_all(&parser);
-	for (size_t i = 0; i < sl.count; ++i) {
-		Statement* s = sl.items[i];
-		statement_print(s, 0);
-	}
+	parser_dump(&parser);
 
 defer:
 	if (result != 0) {

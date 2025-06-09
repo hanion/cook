@@ -422,3 +422,21 @@ Statement* parse_expression_statement(Parser* p) {
 	return s;
 }
 
+
+void parser_dump(Parser* p) {
+	Parser copy_parser = *p;
+	Lexer  copy_lexer  = *p->lexer;
+	copy_parser.lexer = &copy_lexer;
+
+// 	Expression* e = parse_expression(&copy_parser);
+// 	while (e != NULL) {
+// 		expression_print(e, 0);
+// 		e = parse_expression(&copy_parser);
+// 	}
+
+	StatementList sl = parser_parse_all(&copy_parser);
+	for (size_t i = 0; i < sl.count; ++i) {
+		Statement* s = sl.items[i];
+		statement_print(s, 0);
+	}
+}
