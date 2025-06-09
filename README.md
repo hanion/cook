@@ -1,6 +1,6 @@
 # cook
 
-imperative build system. clean syntax, clear flow.
+an imperative build system with clean syntax.
 
 ### minimal usage:
 ```py
