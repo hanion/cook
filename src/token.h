@@ -1,4 +1,5 @@
 #pragma once
+#include "da.h"
 #include <stddef.h>
 #include <stdbool.h>
 
@@ -56,8 +57,7 @@ typedef enum {
 
 typedef struct {
 	TokenType type;
-	const char* text;
-	size_t length;
+	StringView str;
 	size_t line;
 	size_t column;
 } Token;

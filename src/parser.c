@@ -22,7 +22,7 @@ void parser_error_at_token(Parser* p, Token token, const char* error_cstr) {
 	p->had_error = true;
 	fprintf(stderr,"[ERROR][parser] %zu:%zu %s\n\t%s %.*s\n",
 		 token.line, token.column,
-		 error_cstr, token_name_cstr(token), (int)token.length, token.text);
+		 error_cstr, token_name_cstr(token), (int)token.str.count, token.str.items);
 }
 
 Expression* parser_arena_alloc_expression(Parser* p) {
@@ -279,20 +279,19 @@ Expression* parse_primary(Parser* p) {
 		case TOKEN_INTEGER_LITERAL: {
 			Expression* e = parser_arena_alloc_expression(p);
 			e->type = EXPR_LITERAL_INT;
-			e->literal_int.value = parse_literal_int(p->previous.text, p->previous.length);
+			e->literal_int.value = parse_literal_int(p->previous.str.items, p->previous.str.count);
 			return e;
 		}
 		case TOKEN_FLOAT_LITERAL: {
 			Expression* e = parser_arena_alloc_expression(p);
 			e->type = EXPR_LITERAL_FLOAT;
-			e->literal_float.value = parse_literal_float(p->previous.text, p->previous.length);
+			e->literal_float.value = parse_literal_float(p->previous.str.items, p->previous.str.count);
 			return e;
 		}
 		case TOKEN_STRING_LITERAL: {
 			Expression* e = parser_arena_alloc_expression(p);
 			e->type = EXPR_LITERAL_STRING;
-			e->literal_string.value  = p->previous.text;
-			e->literal_string.length = p->previous.length;
+			e->literal_string.str = p->previous.str;
 			return e;
 		}
 		case TOKEN_OPEN_PAREN: {
@@ -329,18 +328,18 @@ Expression* parser_finish_call(Parser* p, Expression* callee) {
 		} else {
 			Token t = parser_advance(p);
 
-			const char* start = t.text;
+			const char* start = t.str.items;
 			while (!parser_check(p, TOKEN_CLOSE_PAREN)
 				&& !parser_check(p, TOKEN_COMMA)
 				&& !parser_check(p, TOKEN_DOLLAR)) {
 				t = parser_advance(p);
 			}
-			const char* end = t.text + t.length;
+			const char* end = t.str.items + t.str.count;
 
 			Expression* e = parser_arena_alloc_expression(p);
 			e->type = EXPR_LITERAL_STRING;
-			e->literal_string.value = start;
-			e->literal_string.length = end - start;
+			e->literal_string.str.items = start;
+			e->literal_string.str.count = end - start;
 			args[argc++] = e;
 		}
 	}

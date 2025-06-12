@@ -67,8 +67,8 @@ Token lexer_next_token(Lexer* l) {
 
 	Token token = {
 		.type = TOKEN_INVALID,
-		.text = &l->content[l->cursor],
-		.length = 0,
+		.str.items = &l->content[l->cursor],
+		.str.count = 0,
 		.line = l->line,
 		.column = l->cursor - l->line_start,
 	};
@@ -88,7 +88,7 @@ Token lexer_next_token(Lexer* l) {
 		token.type = TOKEN_IDENTIFIER;
 		while (l->cursor < l->content_length && token_is_symbol(l->content[l->cursor])) {
 			l->cursor++;
-			token.length++;
+			token.str.count++;
 		}
 
 		TokenType keyword = token_lookup_keyword(token);
@@ -102,14 +102,14 @@ Token lexer_next_token(Lexer* l) {
 	if (token_is_integer(l->content[l->cursor])) {
 		while (l->cursor < l->content_length && token_is_integer(l->content[l->cursor])) {
 			l->cursor++;
-			token.length++;
+			token.str.count++;
 		}
 		if (l->cursor < l->content_length && l->content[l->cursor] == '.') {
 			l->cursor++;
-			token.length++;
+			token.str.count++;
 			while (l->cursor < l->content_length && token_is_integer(l->content[l->cursor])) {
 				l->cursor++;
-				token.length++;
+				token.str.count++;
 			}
 			token.type = TOKEN_FLOAT_LITERAL;
 		} else {
@@ -119,11 +119,11 @@ Token lexer_next_token(Lexer* l) {
 	}
 
 	if (lexer_match(l, '"')) {
-		token.text++; // skip first "
+		token.str.items++; // skip first "
 		token.type = TOKEN_STRING_LITERAL;
 		while (l->cursor + 1 < l->content_length) {
 			l->cursor++;
-			token.length++;
+			token.str.count++;
 			if (lexer_match(l, '"')) { // skip last "
 				break;
 			}
@@ -132,7 +132,7 @@ Token lexer_next_token(Lexer* l) {
 	}
 
 	switch (l->content[l->cursor]) {
-		#define T_RETN(tt, n) { token.type = tt; token.length = n; l->cursor += n; return token; }
+		#define T_RETN(tt, n) { token.type = tt; token.str.count = n; l->cursor += n; return token; }
 		#define T_RET(tt) T_RETN(tt,1)
 		#define T_RET_IF_NEXT(c, tt)  if (lexer_check_next(l, c)) { T_RETN(tt,2); }
 
@@ -211,7 +211,7 @@ Token lexer_next_token(Lexer* l) {
 	}
 
 	l->cursor++;
-	token.length = 1;
+	token.str.count = 1;
 	token.type = TOKEN_INVALID;
 	return token;
 }

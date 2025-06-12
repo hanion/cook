@@ -35,13 +35,13 @@ void expression_print(Expression* expr, int indent) {
 
 	switch(expr->type) {
 		case EXPR_VARIABLE:
-			printf("variable: %.*s\n", (int)expr->variable.name.length, expr->variable.name.text);
+			printf("variable: %.*s\n", (int)expr->variable.name.str.count, expr->variable.name.str.items);
 			break;
 		case EXPR_LITERAL_INT:
 			printf("literal int: %d\n", expr->literal_int.value);
 			break;
 		case EXPR_LITERAL_STRING:
-			printf("literal string: '%.*s'\n", (int)expr->literal_string.length, expr->literal_string.value);
+			printf("literal string: '%.*s'\n", (int)expr->literal_string.str.count, expr->literal_string.str.items);
 			break;
 		case EXPR_CALL:
 			printf("call:\n");
@@ -66,7 +66,7 @@ void expression_print(Expression* expr, int indent) {
 		case EXPR_UNARY:
 			printf("unary:\n");
 			print_indent(indent + 2);
-			printf("op: %.*s\n", (int)expr->unary.op.length, expr->unary.op.text);
+			printf("op: %.*s\n", (int)expr->unary.op.str.count, expr->unary.op.str.items);
 			print_indent(indent + 2);
 			printf("right:\n");
 			expression_print(expr->unary.right, indent + 3);
@@ -77,7 +77,7 @@ void expression_print(Expression* expr, int indent) {
 			printf("left:\n");
 			expression_print(expr->binary.left, indent + 3);
 			print_indent(indent + 2);
-			printf("op: %.*s\n", (int)expr->binary.op.length, expr->binary.op.text);
+			printf("op: %.*s\n", (int)expr->binary.op.str.count, expr->binary.op.str.items);
 			print_indent(indent + 2);
 			printf("right:\n");
 			expression_print(expr->binary.right, indent + 3);

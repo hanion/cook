@@ -1,4 +1,5 @@
 #pragma once
+#include "da.h"
 #include "token.h"
 #include <stdio.h>
 
@@ -55,8 +56,7 @@ typedef struct {
 } ExpressionLiteralFloat;
 
 typedef struct {
-	const char* value;
-	size_t length;
+	StringView str;
 } ExpressionLiteralString;
 
 typedef struct {

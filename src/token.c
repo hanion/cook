@@ -63,7 +63,7 @@ const char* token_type_name_cstr(TokenType tt) {
 }
 
 TokenType token_lookup_keyword(const Token token) {
-	#define KW(k,l) (token.length == l && 0 == strncmp(k, token.text, l))
+	#define KW(k,l) (token.str.count == l && 0 == strncmp(k, token.str.items, l))
 	if (KW("if", 2))       { return TOKEN_KEYWORD_IF; }
 	if (KW("else", 4))     { return TOKEN_KEYWORD_ELSE; }
 	if (KW("for", 3))      { return TOKEN_KEYWORD_FOR; }
@@ -94,10 +94,10 @@ bool token_is_symbol(char c) {
 
 
 bool token_equals(Token token, const char* cstr) {
-	if(token.length != strlen(cstr)) {
+	if(token.str.count != strlen(cstr)) {
 		return false;
 	}
-	return memcmp(token.text, cstr, token.length) == 0;
+	return memcmp(token.str.items, cstr, token.str.count) == 0;
 }
 
 inline static void print_indent(int indent) {
@@ -108,6 +108,6 @@ inline static void print_indent(int indent) {
 void token_print(Token t, int indent) {
 	print_indent(indent);
 	printf("token: %3zu:%-3zu %-18s '%.*s'\n",
-		 t.line, t.column, token_name_cstr(t), (int)t.length, t.text);
+		 t.line, t.column, token_name_cstr(t), (int)t.str.count, t.str.items);
 }
 

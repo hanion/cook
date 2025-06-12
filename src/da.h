@@ -1,4 +1,5 @@
 #pragma once
+#include "arena.h"
 #include <assert.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -48,7 +49,34 @@ static inline void sb_free(StringBuilder* sb) {
 	free(sb->items);
 }
 
-// typedef struct {
-// 	char * const items;
-// 	size_t count;
-// } StringView;
+typedef struct {
+	const char* items;
+	size_t count;
+} StringView;
+
+
+typedef struct StringList {
+	StringView* items;
+	size_t count;
+	size_t capacity;
+} StringList;
+
+
+
+static inline void string_list_add(Arena* arena, StringList* list, StringView sv) {
+	if (list->count >= list->capacity) {
+		size_t new_capacity = list->capacity ? list->capacity * 2 : 4;
+		size_t new_size = new_capacity * sizeof(StringView);
+		StringView* new_items = (StringView*)arena_alloc(arena, new_size);
+
+		if (list->items) {
+			memcpy(new_items, list->items, list->count * sizeof(StringView));
+		}
+
+		list->items = new_items;
+		list->capacity = new_capacity;
+	}
+
+	list->items[list->count++] = sv;
+}
+
