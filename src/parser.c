@@ -375,8 +375,7 @@ StatementList parser_parse_all(Parser* p) {
 
 	while (!parser_is_at_end(p)) {
 		Statement* s = parse_declaration(p);
-		// TODO: use arena instead of malloc
-		da_append(&statement_list, s);
+		da_append_arena(&p->arena, &statement_list, s);
 	}
 
 	return statement_list;
@@ -400,8 +399,7 @@ Statement* parse_block_statement(Parser* p) {
 
 	while (!parser_check(p, TOKEN_CLOSE_CURLY) && !parser_is_at_end(p)) {
 		Statement* s = parse_declaration(p);
-		// TODO: use arena instead of malloc
-		da_append(&statement_list, s);
+		da_append_arena(&p->arena, &statement_list, s);
 	}
 
 	parser_consume(p, TOKEN_CLOSE_CURLY, "Expected '}' after block.");

@@ -25,6 +25,9 @@ typedef struct {
 Interpreter interpreter_new(Parser*);
 
 void interpreter_interpret(Interpreter*);
+void interpreter_dry_run  (Interpreter*);
+
+BuildCommand* interpreter_interpret_build_command(Interpreter*);
 
 void interpreter_error(Interpreter* in, Token token, const char* error_cstr);
 

@@ -3,10 +3,10 @@
 #include <ctype.h>
 
 
-Lexer lexer_new(StringBuilder sb) {
+Lexer lexer_new(StringView sv) {
 	Lexer lexer = {
-		.content = sb.items,
-		.content_length = sb.count,
+		.content = sv.items,
+		.content_length = sv.count,
 		.cursor = 0,
 		.line = 0,
 	};

@@ -10,9 +10,9 @@ MINGW_OBJS := $(SRCS:src/%.c=build/m/%.o)
 LINUX_BIN := build/cook
 MINGW_BIN := build/m/cook.exe
 
-.PHONY: all clean run
+.PHONY: all clean test run
 
-all: $(MINGW_BIN) $(LINUX_BIN) run
+all: $(MINGW_BIN) $(LINUX_BIN) test
 
 
 $(LINUX_BIN): $(OBJS) | build
@@ -28,6 +28,8 @@ $(MINGW_BIN): $(MINGW_OBJS)
 build/m/%.o: src/%.c | build/m
 	$(CC_MINGW) $(CFLAGS) -c $< -o $@
 
+build/tester: src/tester.c | build
+	$(CC_LINUX) $(CFLAGS) src/tester.c src/file.c -o build/tester
 
 build/m:
 	mkdir -p build/m
@@ -41,3 +43,5 @@ clean:
 run: $(LINUX_BIN)
 	./build/cook
 
+test: build/tester $(LINUX_BIN)
+	./build/tester

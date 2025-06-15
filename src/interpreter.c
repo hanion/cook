@@ -28,14 +28,21 @@ Interpreter interpreter_new(Parser* p) {
 
 
 void interpreter_interpret(Interpreter* in) {
+	BuildCommand* bc = interpreter_interpret_build_command(in);
+	build_command_execute(bc);
+}
+
+void interpreter_dry_run(Interpreter* in) {
+	BuildCommand* bc = interpreter_interpret_build_command(in);
+	build_command_dump(bc, stdout);
+}
+
+BuildCommand* interpreter_interpret_build_command(Interpreter* in) {
 	StatementList sl = parser_parse_all(in->parser);
 	for (size_t i = 0; i < sl.count; ++i) {
 		interpreter_execute(in, sl.items[i]);
 	}
-
-	BuildCommand* bc = in->root_env.current_build_command;
-	build_command_print(bc);
-	build_command_dump(bc, stdout);
+	return in->root_env.current_build_command;
 }
 
 void interpreter_error(Interpreter* in, Token token, const char* error_cstr) {
@@ -49,7 +56,7 @@ void interpreter_error(Interpreter* in, Token token, const char* error_cstr) {
 
 
 SymbolValue interpreter_evaluate(Interpreter* in, Expression* e) {
-	if (!in || !e || e == NULL || !e->type) { return (SymbolValue){0}; }
+	if (!e) { return (SymbolValue){0}; }
 
 	switch (e->type) {
 		case EXPR_VARIABLE: return interpreter_lookup_variable(in, e->variable.name.str, e);
@@ -76,10 +83,9 @@ void interpreter_execute(Interpreter* in, Statement* s) {
 	}
 }
 void interpret_block(Interpreter* in, StatementBlock*  s) {
-	// create a new env
-	// execute all s->statements
-
-	// restore env
+	for (size_t i = 0; i < s->statement_count; ++i) {
+		interpreter_execute(in, s->statements[i]);
+	}
 }
 
 
@@ -105,7 +111,7 @@ void interpret_call(Interpreter* in, ExpressionCall* e) {
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
-				string_list_add(&in->arena, &bc->target_names, arg.string);
+				da_append_arena(&in->arena, &bc->target_names, arg.string);
 			}
 		}
 	} else if (callee.method_type == METHOD_COMPILER) {
@@ -121,7 +127,7 @@ void interpret_call(Interpreter* in, ExpressionCall* e) {
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
-				string_list_add(&in->arena, &bc->input_files, arg.string);
+				da_append_arena(&in->arena, &bc->input_files, arg.string);
 			}
 		}
 	} else if (callee.method_type == METHOD_CFLAGS) {
@@ -129,7 +135,7 @@ void interpret_call(Interpreter* in, ExpressionCall* e) {
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
-				string_list_add(&in->arena, &bc->cflags, arg.string);
+				da_append_arena(&in->arena, &bc->cflags, arg.string);
 			}
 		}
 	} else if (callee.method_type == METHOD_LDFLAGS) {
@@ -137,7 +143,7 @@ void interpret_call(Interpreter* in, ExpressionCall* e) {
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
-				string_list_add(&in->arena, &bc->ldflags, arg.string);
+				da_append_arena(&in->arena, &bc->ldflags, arg.string);
 			}
 		}
 	} else if (callee.method_type == METHOD_SOURCE_DIR) {
@@ -161,7 +167,7 @@ void interpret_call(Interpreter* in, ExpressionCall* e) {
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
-				string_list_add(&in->arena, &bc->include_dirs, arg.string);
+				da_append_arena(&in->arena, &bc->include_dirs, arg.string);
 			}
 		}
 	} else if (callee.method_type == METHOD_LIBRARY_DIR) {
@@ -169,7 +175,7 @@ void interpret_call(Interpreter* in, ExpressionCall* e) {
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
-				string_list_add(&in->arena, &bc->library_dirs, arg.string);
+				da_append_arena(&in->arena, &bc->library_dirs, arg.string);
 			}
 		}
 	} else if (callee.method_type == METHOD_LINK) {
@@ -177,7 +183,7 @@ void interpret_call(Interpreter* in, ExpressionCall* e) {
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
-				string_list_add(&in->arena, &bc->library_links, arg.string);
+				da_append_arena(&in->arena, &bc->library_links, arg.string);
 			}
 		}
 	}

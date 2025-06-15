@@ -10,7 +10,7 @@ typedef struct {
 	size_t line_start;
 } Lexer;
 
-Lexer lexer_new(StringBuilder sb);
+Lexer lexer_new(StringView sv);
 
 char lexer_advance         (Lexer* l);
 bool lexer_check           (Lexer* l, char c);

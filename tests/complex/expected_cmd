@@ -1,0 +1,1 @@
+g++ -Wall -Wextra -Werror -g -o game -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm main.cpp input.cpp window.cpp renderer.cpp imgui.cpp -Llibs/glfw/lib -Llibs/glew/lib -lglfw -lGLEW -lGL -ldl -lpthread
