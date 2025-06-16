@@ -58,7 +58,7 @@ void expression_print(Expression* expr, int indent) {
 			printf("chain:\n");
 			print_indent(indent + 2);
 			printf("left:\n");
-			expression_print(expr->chain.expr, indent + 3);
+			expression_print(expr->chain.left, indent + 3);
 			print_indent(indent + 2);
 			printf("right:\n");
 			expression_print(expr->chain.right, indent + 3);

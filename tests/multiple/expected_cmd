@@ -1,0 +1,2 @@
+gcc -Wall -o foo foochain.c foo.c 
+gcc -o bar bar.c

@@ -1,4 +1,5 @@
 #pragma once
+#include "arena.h"
 #include "da.h"
 #include "symbol.h"
 #include <stdio.h>
@@ -12,11 +13,16 @@ typedef enum BuildType {
 
 typedef struct BuildCommand BuildCommand;
 
+typedef struct BuildCommandChildren {
+	BuildCommand** items;
+	size_t count;
+	size_t capacity;
+} BuildCommandChildren;
+
 struct BuildCommand {
 	BuildCommand* parent;
 
-	BuildCommand** children;
-	size_t child_count;
+	BuildCommandChildren children;
 
 	StringView compiler;
 
@@ -40,7 +46,9 @@ struct BuildCommand {
 };
 
 BuildCommand build_command_default();
-BuildCommand build_command_inherit(BuildCommand* parent);
-void         build_command_print  (BuildCommand* bc);
+void         build_command_print  (BuildCommand* bc, size_t indent);
 void         build_command_execute(BuildCommand* bc);
 void         build_command_dump   (BuildCommand* bc, FILE* stream);
+
+BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent);
+

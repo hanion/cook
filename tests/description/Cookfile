@@ -1,0 +1,5 @@
+build(foo) {
+	cflags(-Wall)
+	input(foochain.c)
+	input(fooin.c)
+}

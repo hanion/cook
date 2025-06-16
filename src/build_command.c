@@ -1,4 +1,5 @@
 #include "build_command.h"
+#include "da.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -12,14 +13,27 @@ BuildCommand build_command_default() {
 	return bc;
 }
 
-BuildCommand build_command_inherit(BuildCommand* parent) {
-	BuildCommand new = (BuildCommand){
-		// TODO:
-	};
-	return new;
+BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent) {
+	if (!parent) {
+		return NULL;
+	}
+	BuildCommand* bc = (BuildCommand*)arena_alloc(arena, sizeof(BuildCommand));
+	*bc = *parent;
+	bc->parent = parent;
+	bc->target_names.count = 0;
+	bc->input_files.count = 0;
+	bc->children.count = 0;
+
+	da_append_arena(arena, &parent->children, bc);
+	return bc;
 }
 
 
+inline static void print_indent(int indent) {
+	for (int i = 0; i < indent; ++i) {
+		putchar(' ');
+	}
+}
 inline static void indent_label(int indent, const char* label) {
 	printf("%*s%16s: ", indent, "", label);
 }
@@ -33,11 +47,12 @@ inline static void string_list_print_big(const char* label, const StringList* li
 	}
 	printf("\n");
 }
-void build_command_print(BuildCommand* bc) {
+void build_command_print(BuildCommand* bc, size_t indent) {
 	if (!bc) {
 		return;
 	}
 
+	print_indent(indent);
 	printf("build command:\n");
 
 	if (bc->compiler.count > 0) {
@@ -63,11 +78,13 @@ void build_command_print(BuildCommand* bc) {
 		printf("%.*s\n", (int)bc->output_dir.count, bc->output_dir.items);
 	}
 
-	if (bc->child_count > 0) {
-		printf("  children:\n");
-		for (size_t i = 0; i < bc->child_count; ++i) {
-			printf("\t  child %zu:\n", i);
-			build_command_print(bc->children[i]);
+	if (bc->children.count > 0) {
+		print_indent(indent+ 1);
+		printf("children:\n");
+		for (size_t i = 0; i < bc->children.count; ++i) {
+			print_indent(indent + 2);
+			printf("child %zu:\n", i);
+			build_command_print(bc->children.items[i], indent + 3);
 		}
 	}
 }
@@ -78,6 +95,9 @@ inline static void print_stringview(FILE* stream, StringView sv) {
 }
 
 inline static void string_list_print_flat(FILE* stream, const StringList* list, const char* prefix) {
+	if (!list || !list->items) {
+		return;
+	}
 	for (size_t i = 0; i < list->count; ++i) {
 		if (prefix) { fprintf(stream, "%s", prefix); }
 		print_stringview(stream, list->items[i]);
@@ -86,6 +106,14 @@ inline static void string_list_print_flat(FILE* stream, const StringList* list, 
 
 void build_command_dump(BuildCommand* bc, FILE* stream) {
 	if (!bc) {
+		return;
+	}
+
+	// skip root bc
+	if (!bc->parent) {
+		for (size_t i = 0; i < bc->children.count; ++i) {
+			build_command_dump(bc->children.items[i], stream);
+		}
 		return;
 	}
 
@@ -109,8 +137,8 @@ void build_command_dump(BuildCommand* bc, FILE* stream) {
 	fprintf(stream, "\n");
 
 	// recurse into children
-	for (size_t i = 0; i < bc->child_count; ++i) {
-		build_command_dump(bc->children[i], stream);
+	for (size_t i = 0; i < bc->children.count; ++i) {
+		build_command_dump(bc->children.items[i], stream);
 	}
 }
 

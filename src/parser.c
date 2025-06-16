@@ -227,27 +227,13 @@ Expression* parse_call(Parser* p) {
 			expr = parser_finish_call(p, expr);
 		} else if (parser_match(p, TOKEN_DOT)) {
 			Expression* right = parse_call(p);
-			//Token name = parser_consume(p, TOKEN_IDENTIFIER, "Expected method name after '.'.");
-
 			Expression* e = parser_arena_alloc_expression(p);
 			e->type = EXPR_CHAIN;
-			e->chain.expr = expr;
+			e->chain.left = expr;
 			e->chain.right = right;
 			expr = e;
-
-		} else if (parser_match(p, TOKEN_COLON) && parser_match(p, TOKEN_COLON)) {
-			return parse_call(p);
-// 		} else if (parser_check(p, TOKEN_OPEN_BRACKET)) {
-// 			Token name = p->previous;
-// 			parser_match(p, TOKEN_OPEN_BRACKET);
-// 			Expression* key = parse_expression(p);
-// 			parser_consume(p, TOKEN_CLOSE_BRACKET, "Expected ']' after subscript expression.");
-// 
-// 			Expression* e = parser_arena_alloc_expression(p);
-// 			e->type = EXPR_SUBSCRIPT;
-// 			e->subscript.expr = expr;
-// 			e->subscript.key = key;
-// 			e->subscript.name = name;
+// 		} else if (parser_match(p, TOKEN_COLON) && parser_match(p, TOKEN_COLON)) {
+// 			expr = parse_call(p);
 		} else {
 			break;
 		}
@@ -261,7 +247,7 @@ Expression* parse_primary(Parser* p) {
 		case TOKEN_IDENTIFIER: {
 			Expression* e = parser_arena_alloc_expression(p);
 			e->type = EXPR_VARIABLE;
-			e->variable.name  = p->previous;
+			e->variable.name = p->previous;
 			return e;
 		}
 		case TOKEN_KEYWORD_FALSE: {
@@ -382,15 +368,9 @@ StatementList parser_parse_all(Parser* p) {
 }
 
 Statement* parse_declaration(Parser* p) {
-// 	if (parser_check(p, TOKEN_IDENTIFIER) && parser_check_next(p, TOKEN_COLON)) {
-// 		return parse_typed_declaration(p);
-// 	}
 	return parse_statement(p);
 }
 Statement* parse_statement(Parser* p) {
-	if (parser_match(p, TOKEN_OPEN_CURLY)) {
-		return parse_block_statement(p);
-	}
 	return parse_expression_statement(p);
 }
 
@@ -412,10 +392,24 @@ Statement* parse_block_statement(Parser* p) {
 }
 Statement* parse_expression_statement(Parser* p) {
 	Expression* expr = parse_expression(p);
-	parser_match(p, TOKEN_SEMICOLON);
 	Statement* s = parser_arena_alloc_statement(p);
-	s->type = STATEMENT_EXPRESSION;
-	s->expression.expression = expr;
+
+	if (parser_match(p, TOKEN_OPEN_CURLY)) {
+		Statement* b = parse_block_statement(p);
+
+		Statement* se = parser_arena_alloc_statement(p);
+		se->type = STATEMENT_EXPRESSION;
+		se->expression.expression = expr;
+
+		s->type = STATEMENT_DESCRIPTION;
+		s->description.statement = se;
+		s->description.block = b;
+	} else {
+		s->type = STATEMENT_EXPRESSION;
+		s->expression.expression = expr;
+	}
+
+	parser_match(p, TOKEN_SEMICOLON);
 	return s;
 }
 

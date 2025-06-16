@@ -43,7 +43,7 @@ typedef struct {
 } ExpressionUnary;
 
 typedef struct {
-	Expression* expr;
+	Expression* left;
 	Expression* right;
 } ExpressionChain;
 

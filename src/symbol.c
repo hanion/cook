@@ -30,7 +30,7 @@ void symbol_value_print(SymbolValue value, int indent) {
 		case SYMBOL_VALUE_FLOAT:  printf("float: %f", value.floating); break;
 		case SYMBOL_VALUE_STRING: printf("string: %.*s", (int)value.string.count, value.string.items); break;
 		case SYMBOL_VALUE_METHOD: printf("method: %.*s", (int)value.string.count, value.string.items); break;
-		case SYMBOL_VALUE_BUILD_COMMAND: printf("build command:\n\t\t"); build_command_print(value.bc); break;
+		case SYMBOL_VALUE_BUILD_COMMAND: printf("build command:\n\t\t"); build_command_print(value.bc, indent + 2); break;
 		default: break;
 	}
 	printf("\n");

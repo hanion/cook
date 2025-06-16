@@ -4,10 +4,11 @@
 #include "da.h"
 #include "file.h"
 
-#define TEST_COUNT 2
-static const char* tests[TEST_COUNT] = {
+static const char* tests[] = {
 	"hello_world",
-	"complex"
+	"complex",
+	"description",
+	"multiple",
 };
 
 
@@ -40,8 +41,8 @@ bool compare_expected_cmd(const char* expected_cmd_path_cstr, StringBuilder* out
 
 	if (!result) {
 		printf("failed\n");
-		printf("\nfile (%zu lines):\n%.*s", file.count, (int)file.count, file.items);
-		printf("\noutput (%zu lines):\n%.*s", output->count, (int)output->count, output->items);
+		printf("\noutput   (%zu lines):\n%.*s", output->count, (int)output->count, output->items);
+		printf("\nexpected (%zu lines):\n%.*s", file.count,    (int)file.count,    file.items);
 		printf("\n");
 	}
 	sb_free(&file);
@@ -66,31 +67,32 @@ bool run_test(const char* cmd_cstr, StringBuilder* cmd) {
 }
 
 int main(void) {
-	const char* build_path = "build/";
-	const char* tests_path = "tests/";
-	const char* build_cmd_f = "cook --dry-run -f ";
-	const char* expected_cmd_path = "/expected_cmd";
+	const char* build_path    = "build/";
+	const char* tests_path    = "tests/";
+	const char* build_cmd_f   = "cook --dry-run -f ";
+	const char* expected_path = "/expected_cmd";
 
-	StringBuilder test_cmd = {0};
-	StringBuilder output_cmd = {0};
+	StringBuilder test_cmd     = {0};
+	StringBuilder output_cmd   = {0};
 	StringBuilder expected_cmd = {0};
 
+	size_t test_count   = sizeof(tests)/sizeof(tests[0]);
 	size_t failed_count = 0;
 
-	for (size_t i = 0; i < TEST_COUNT; ++i) {
-		test_cmd.count = 0;
-		output_cmd.count = 0;
+	for (size_t i = 0; i < test_count; ++i) {
+		test_cmd.count     = 0;
+		output_cmd.count   = 0;
 		expected_cmd.count = 0;
 
-		da_append_many(&test_cmd, build_path, strlen(build_path));
+		da_append_many(&test_cmd, build_path,  strlen(build_path));
 		da_append_many(&test_cmd, build_cmd_f, strlen(build_cmd_f));
-		da_append_many(&test_cmd, tests_path, strlen(tests_path));
-		da_append_many(&test_cmd, tests[i], strlen(tests[i]));
+		da_append_many(&test_cmd, tests_path,  strlen(tests_path));
+		da_append_many(&test_cmd, tests[i],    strlen(tests[i]));
 		da_append(&test_cmd, 0);
 
-		da_append_many(&expected_cmd, tests_path, strlen(tests_path));
-		da_append_many(&expected_cmd, tests[i], strlen(tests[i]));
-		da_append_many(&expected_cmd, expected_cmd_path, strlen(expected_cmd_path));
+		da_append_many(&expected_cmd, tests_path,    strlen(tests_path));
+		da_append_many(&expected_cmd, tests[i],      strlen(tests[i]));
+		da_append_many(&expected_cmd, expected_path, strlen(expected_path));
 		da_append(&expected_cmd, 0);
 
 		printf("* test[%zu](%s): ", i, tests[i]);
@@ -112,9 +114,9 @@ int main(void) {
 	}
 
 	if (failed_count == 0) {
-		fprintf(stdout, "[SUCCESS][tester] passed %d tests\n", TEST_COUNT);
+		fprintf(stdout, "[SUCCESS][tester] passed %zu tests\n", test_count);
 	} else {
-		fprintf(stderr, "[ERROR][tester] failed %zu tests\n", failed_count);
+		fprintf(stderr,   "[ERROR][tester] failed %zu tests\n", failed_count);
 	}
 
 	sb_free(&test_cmd);

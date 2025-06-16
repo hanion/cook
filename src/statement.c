@@ -14,6 +14,7 @@ const char* statement_name_cstr(StatementType st) {
 		#define CASE(T) case T: return #T;
 		CASE(STATEMENT_EXPRESSION)
 		CASE(STATEMENT_BLOCK)
+		CASE(STATEMENT_DESCRIPTION)
 		#undef CASE
 	}
 	return "!!! STATEMENT INVALID";
@@ -36,6 +37,10 @@ void statement_print(Statement* s, int indent) {
 	switch (s->type) {
 		case STATEMENT_EXPRESSION:
 			expression_print(s->expression.expression, indent + 1);
+			break;
+		case STATEMENT_DESCRIPTION:
+			statement_print(s->description.statement, indent + 2);
+			statement_print(s->description.block, indent + 2);
 			break;
 		case STATEMENT_BLOCK:
 			for (size_t i = 0; i < s->block.statement_count; ++i) {

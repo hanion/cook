@@ -16,11 +16,13 @@
 typedef struct CookOptions {
 	StringView source;
 	bool dry_run;
+	bool verbose;
 } CookOptions;
 
 CookOptions cook_options_default() {
 	return (CookOptions){
 		.dry_run = true,
+		.verbose = false,
 	};
 }
 
@@ -31,6 +33,8 @@ int cook(CookOptions op) {
 	Parser parser = parser_new(&lexer);
 	//parser_dump(&parser);
 	Interpreter interpreter = interpreter_new(&parser);
+
+	interpreter.verbose = op.verbose;
 
 	if (op.dry_run) {
 		interpreter_dry_run(&interpreter);
@@ -49,6 +53,7 @@ void print_usage(const char* pname) {
 		"options:\n"
 		"  -h, --help      show this help message\n"
 		"  -f <file>       use specified cookfile\n"
+		"  --verbose       verbose printing\n"
 		"  --dry-run       show the commands that would be run, but don't execute them\n",
 		pname
 	);
@@ -77,6 +82,8 @@ int main(int argc, char** argv) {
 			filepath = shift(argv, argc);
 		} else if (strcmp(arg, "--dry-run") == 0) {
 			op.dry_run = false;
+		} else if (strcmp(arg, "--verbose") == 0) {
+			op.verbose = true;
 		} else {
 			fprintf(stderr, "[ERROR] unrecognized argument: %s\n", arg);
 			print_usage(pname);
@@ -98,14 +105,8 @@ int main(int argc, char** argv) {
 		op.source = sv_from_sb(source);
 		sb_free(&file);
 	} else {
-		const char * const program = "build(game)\
-			.input(main.cpp, input.cpp, window.cpp, renderer.cpp, imgui.cpp)\
-			.compiler(g++).cflags(-Wall, -Wextra, -Werror, -g)\
-			.include_dir(include, imgui, libs/glfw/include, libs/glew/include, libs/glm)\
-			.library_dir(libs/glfw/lib, libs/glew/lib).link(glfw, GLEW, GL, dl, pthread)\
-			.source_dir(src).output_dir(build)";
-		da_append_many(&source, program, strlen(program));
-		op.source = sv_from_sb(source);
+		print_usage(pname);
+		return 1;
 	}
 
 	bool result = cook(op);

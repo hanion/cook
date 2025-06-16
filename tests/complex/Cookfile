@@ -1,7 +1,8 @@
-build(game)
-.input(main.cpp, input.cpp, window.cpp, renderer.cpp, imgui.cpp)
-.compiler(g++).cflags(-Wall, -Wextra, -Werror, -g)
-.include_dir(include, imgui, libs/glfw/include, libs/glew/include, libs/glm)
-.library_dir(libs/glfw/lib, libs/glew/lib).link(glfw, GLEW, GL, dl, pthread)
-.source_dir(src).output_dir(build)
+build(game) {
+	input(main.cpp, input.cpp, window.cpp, renderer.cpp, imgui.cpp)
+	compiler(g++).cflags(-Wall, -Wextra, -Werror, -g)
+	include_dir(include, imgui, libs/glfw/include, libs/glew/include, libs/glm)
+	library_dir(libs/glfw/lib, libs/glew/lib).link(glfw, GLEW, GL, dl, pthread)
+	source_dir(src).output_dir(build)
+}
 

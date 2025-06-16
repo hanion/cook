@@ -1,0 +1,6 @@
+build(foo).input(foochain.c).cflags(-Wall) {
+	input(foo.c)
+}
+build(bar) {
+	input(bar.c)
+}

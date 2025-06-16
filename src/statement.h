@@ -4,6 +4,7 @@
 typedef enum StatementType {
 	STATEMENT_EXPRESSION,
 	STATEMENT_BLOCK,
+	STATEMENT_DESCRIPTION,
 } StatementType;
 
 
@@ -19,11 +20,17 @@ typedef struct {
 	Statement** statements;
 } StatementBlock;
 
+typedef struct {
+	Statement* statement;
+	Statement* block;
+} StatementDescription;
+
 struct Statement {
 	StatementType type;
 	union {
 		StatementExpression expression;
 		StatementBlock block;
+		StatementDescription description;
 	};
 };
 
