@@ -16,22 +16,28 @@
 typedef struct CookOptions {
 	StringView source;
 	bool dry_run;
-	bool verbose;
+	int verbose;
 } CookOptions;
 
 CookOptions cook_options_default() {
 	return (CookOptions){
 		.dry_run = true,
-		.verbose = false,
+		.verbose = 0,
 	};
 }
 
 
 int cook(CookOptions op) {
 	Lexer lexer = lexer_new(op.source);
-	//lexer_dump(&lexer);
+	if (op.verbose > 2) {
+		printf("[lexer] dump:\n");
+		lexer_dump(&lexer);
+	}
 	Parser parser = parser_new(&lexer);
-	//parser_dump(&parser);
+	if (op.verbose > 1) {
+		printf("[parser] dump:\n");
+		parser_dump(&parser);
+	}
 	Interpreter interpreter = interpreter_new(&parser);
 
 	interpreter.verbose = op.verbose;
@@ -81,9 +87,11 @@ int main(int argc, char** argv) {
 			}
 			filepath = shift(argv, argc);
 		} else if (strcmp(arg, "--dry-run") == 0) {
-			op.dry_run = false;
+			op.dry_run = true;
+		} else if (strncmp(arg, "--verbose=", 10) == 0) {
+			op.verbose = arg[10] - '0';
 		} else if (strcmp(arg, "--verbose") == 0) {
-			op.verbose = true;
+			op.verbose = 1;
 		} else {
 			fprintf(stderr, "[ERROR] unrecognized argument: %s\n", arg);
 			print_usage(pname);
@@ -94,16 +102,10 @@ int main(int argc, char** argv) {
 	StringBuilder source = {0};
 
 	if (filepath) {
-		StringBuilder file = {0};
-		da_append_many(&file, filepath, strlen(filepath));
-		da_append_many(&file, "/Cookfile", 9);
-		da_append(&file, 0);
-
-		if (!read_entire_file(file.items, &source)) {
+		if (!read_entire_file(filepath, &source)) {
 			return 1;
 		}
 		op.source = sv_from_sb(source);
-		sb_free(&file);
 	} else {
 		print_usage(pname);
 		return 1;

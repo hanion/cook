@@ -25,7 +25,6 @@ Environment* environment_new(Arena* arena) {
 Interpreter interpreter_new(Parser* p) {
 	Interpreter in = {
 		.parser = p,
-		.verbose = false,
 	};
 	in.current_environment = environment_new(&in.arena);
 	return in;
@@ -39,12 +38,12 @@ void interpreter_interpret(Interpreter* in) {
 
 void interpreter_dry_run(Interpreter* in) {
 	BuildCommand* bc = interpreter_interpret_build_command(in);
-	if (in->verbose) {
+	if (in->verbose > 0) {
 		printf("[interpreter] build command pretty:\n");
 		build_command_print(bc, 1);
 		printf("[interpreter] build command dump:\n");
-		build_command_dump(bc, stdout);
 	}
+	build_command_dump(bc, stdout);
 }
 
 BuildCommand* interpreter_interpret_build_command(Interpreter* in) {

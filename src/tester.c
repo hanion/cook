@@ -39,11 +39,14 @@ bool compare_expected_cmd(const char* expected_cmd_path_cstr, StringBuilder* out
 
 	bool result = (strncmp(file.items, output->items, output->count) == 0);
 
+	if (output->count != file.count) {
+		result = false;
+	}
+
 	if (!result) {
 		printf("failed\n");
-		printf("\noutput   (%zu lines):\n%.*s", output->count, (int)output->count, output->items);
-		printf("\nexpected (%zu lines):\n%.*s", file.count,    (int)file.count,    file.items);
-		printf("\n");
+		printf("output   (%zu lines):\n%.*s\n", output->count, (int)output->count, output->items);
+		printf("expected (%zu lines):\n%.*s\n", file.count,    (int)file.count,    file.items);
 	}
 	sb_free(&file);
 	return result;
@@ -71,6 +74,7 @@ int main(void) {
 	const char* tests_path    = "tests/";
 	const char* build_cmd_f   = "cook --dry-run -f ";
 	const char* expected_path = "/expected_cmd";
+	const char* cookfile      = "/Cookfile";
 
 	StringBuilder test_cmd     = {0};
 	StringBuilder output_cmd   = {0};
@@ -88,6 +92,7 @@ int main(void) {
 		da_append_many(&test_cmd, build_cmd_f, strlen(build_cmd_f));
 		da_append_many(&test_cmd, tests_path,  strlen(tests_path));
 		da_append_many(&test_cmd, tests[i],    strlen(tests[i]));
+		da_append_many(&test_cmd, cookfile,    strlen(cookfile));
 		da_append(&test_cmd, 0);
 
 		da_append_many(&expected_cmd, tests_path,    strlen(tests_path));

@@ -19,7 +19,7 @@ typedef struct {
 	bool had_error;
 	Arena arena;
 	Environment* current_environment;
-	bool verbose;
+	int verbose;
 } Interpreter;
 
 Environment* environment_new(Arena*);

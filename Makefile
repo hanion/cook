@@ -19,14 +19,14 @@ $(LINUX_BIN): $(OBJS) | build
 	$(CC_LINUX) $(CFLAGS) $^ -o $@
 
 build/%.o: src/%.c | build
-	$(CC_LINUX) $(CFLAGS) -c $< -o $@
+	$(CC_LINUX) $(CFLAGS) -c -o $@ $<
 
 
 $(MINGW_BIN): $(MINGW_OBJS)
 	$(CC_MINGW) $(CFLAGS) $^ -o $@
 
 build/m/%.o: src/%.c | build/m
-	$(CC_MINGW) $(CFLAGS) -c $< -o $@
+	$(CC_MINGW) $(CFLAGS) -c -o $@ $<
 
 build/tester: src/tester.c | build
 	$(CC_LINUX) $(CFLAGS) src/tester.c src/file.c -o build/tester
@@ -41,7 +41,7 @@ clean:
 	rm -rf build
 
 run: $(LINUX_BIN)
-	./build/cook
+	./build/cook --verbose
 
 test: build/tester $(LINUX_BIN)
 	./build/tester
