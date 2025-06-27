@@ -1,6 +1,2 @@
-build(foo).input(foochain.c).cflags(-Wall) {
-	input(foo.c)
-}
-build(bar) {
-	input(bar.c)
-}
+build(foo).input(foochain.c).cflags(-Wall)
+build(bar)

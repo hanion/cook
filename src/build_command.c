@@ -64,6 +64,20 @@ inline static void string_list_print_big(const char* label, const StringList* li
 	}
 	printf("\n");
 }
+inline static void target_list_print_big(const char* label, const TargetList* list, int indent) {
+	if (list->count == 0) return;
+
+	indent_label(indent, label);
+	for (size_t i = 0; i < list->count; ++i) {
+		const Target* sv = &list->items[i];
+		printf("%.*s", (int)sv->name.count, sv->name.items);
+		if (i + 1 < list->count) {
+			printf(", ");
+		}
+	}
+	printf("\n");
+}
+
 void build_command_print(BuildCommand* bc, size_t indent) {
 	if (!bc) {
 		return;
@@ -81,7 +95,7 @@ void build_command_print(BuildCommand* bc, size_t indent) {
 	build_type_print(bc->build_type);
 	printf("\n");
 
-	string_list_print_big("target names", &bc->target_names, 2);
+	target_list_print_big("targets", &bc->targets, 2);
 	string_list_print_big("input files", &bc->input_files, 2);
 	string_list_print_big("include dirs", &bc->include_dirs, 2);
 	string_list_print_big("include files", &bc->include_files, 2);
@@ -143,10 +157,10 @@ void build_command_dump(BuildCommand* bc, FILE* stream) {
 		build_command_dump(bc->children.items[i], stream);
 	}
 
-	if (bc->target_names.count == 0) {
+	if (bc->targets.count == 0) {
 		return;
 	}
-	if (bc->target_names.count <= bc->target_to_build) {
+	if (bc->targets.count <= bc->target_to_build) {
 		return;
 	}
 
@@ -162,20 +176,9 @@ void build_command_dump(BuildCommand* bc, FILE* stream) {
 	}
 
 	fprintf(stream, "-o ");
-	StringView target_name = bc->target_names.items[bc->target_to_build];
-	print_stringview(stream, target_name);
-
-	// NOTE: this should be done better
-	// should not put .c to end of obkjects like: `bar.o.c`
-
-	// infer source
-	StringBuilder inferred_file = {0};
-	da_append_many(&inferred_file, target_name.items, target_name.count);
-	da_append_many(&inferred_file, ".c\0", 3);
-
-	if (0 || access(inferred_file.items, F_OK) == 0) {
-		print_stringview(stream, sv_from_sb(inferred_file));
-	}
+	Target* t = &bc->targets.items[bc->target_to_build];
+	print_stringview(stream, sv_from_sb(t->output_name));
+	print_stringview(stream, sv_from_sb(t->input_name));
 
 	string_list_print_flat(stream, &bc->include_dirs, "-I");
 	string_list_print_flat(stream, &bc->input_files, "");
@@ -186,7 +189,7 @@ void build_command_dump(BuildCommand* bc, FILE* stream) {
 	fprintf(stream, "\n");
 
 	if (bc->target_to_build == 0) {
-		for (size_t i = 1; i < bc->target_names.count; ++i) {
+		for (size_t i = 1; i < bc->targets.count; ++i) {
 			bc->target_to_build = i;
 			build_command_dump(bc, stream);
 		}

@@ -43,3 +43,5 @@ SymbolValue interpreter_lookup_variable(Interpreter* in, StringView sv, Expressi
 
 
 SymbolValue interpret_method_build(Interpreter* in, ExpressionCall* e);
+
+void interpreter_expand_build_command_targets(Interpreter* in, BuildCommand* bc);

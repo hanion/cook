@@ -1,3 +1,3 @@
-build(foo).input(foo.c) {
-	build(bar).input(bar.c)
+build(foo) {
+	build(bar)
 }

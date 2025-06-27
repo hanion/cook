@@ -7,6 +7,8 @@
 #include "symbol.h"
 #include <signal.h>
 #include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
 static const SymbolValue nil = { .type = SYMBOL_VALUE_NIL };
 
@@ -50,6 +52,7 @@ BuildCommand* interpreter_interpret_build_command(Interpreter* in) {
 	for (size_t i = 0; i < sl.count; ++i) {
 		interpreter_execute(in, sl.items[i]);
 	}
+	interpreter_expand_build_command_targets(in, in->current_build_command);
 	return in->current_build_command;
 }
 
@@ -250,7 +253,6 @@ SymbolValue interpreter_lookup_variable(Interpreter* in, StringView sv, Expressi
 }
 
 SymbolValue interpret_method_build(Interpreter* in, ExpressionCall* e) {
-	// TODO: infer the main input file
 	BuildCommand* enclosing = in->current_build_command;
 	BuildCommand* bc = build_command_inherit(&in->arena, in->current_build_command);
 	in->current_build_command = bc;
@@ -258,24 +260,47 @@ SymbolValue interpret_method_build(Interpreter* in, ExpressionCall* e) {
 	for (size_t i = 0; i < e->argc; ++i) {
 		SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 		if (arg.type == SYMBOL_VALUE_STRING) {
-			if (in->current_build_command->build_type == BUILD_OBJECT) {
-				StringBuilder sbarg = sb_from_sv(arg.string);
-				da_append_many_arena(&in->arena, &sbarg, ".o", 2);
-				StringView svarg = sv_from_sb(sbarg);
-				da_append_arena(&in->arena, &in->current_build_command->target_names, svarg);
-				if (in->current_build_command->parent) {
-					da_append_arena(&in->arena, &in->current_build_command->parent->input_files, svarg);
-				}
-			} else {
-				da_append_arena(&in->arena, &in->current_build_command->target_names, arg.string);
-			}
+			Target t = { .name = arg.string };
+			da_append_arena(&in->arena, &bc->targets, t);
 		}
 	}
-	
+
 	in->current_build_command = enclosing;
 
 	return (SymbolValue){
 		.type = SYMBOL_VALUE_BUILD_COMMAND,
 		.bc = bc
 	};
+}
+
+// NOTE: we have to wait for all the descriptions to end to run this,
+// otherwise we might miss the compiler change
+void interpreter_expand_build_command_targets(Interpreter* in, BuildCommand* bc) {
+	for (size_t i = 0; i < bc->targets.count; ++i) {
+		Target* t = &bc->targets.items[i];
+
+		t->input_name.count = 0;
+		da_append_many_arena(&in->arena, &t->input_name, t->name.items, t->name.count);
+		if ((bc->compiler.count == 3 && strncmp(bc->compiler.items, "gcc", 3) == 0) ||
+			(bc->compiler.count == 5 && strncmp(bc->compiler.items, "clang", 5) == 0)
+		) {
+			da_append_many_arena(&in->arena, &t->input_name, ".c", 2);
+		} else if (bc->compiler.count == 3 && strncmp(bc->compiler.items, "g++", 3) == 0) {
+			da_append_many_arena(&in->arena, &t->input_name, ".cpp", 4);
+		}
+
+		t->output_name.count = 0;
+		da_append_many_arena(&in->arena, &t->output_name, t->name.items, t->name.count);
+		if (bc->build_type == BUILD_OBJECT) {
+			da_append_many_arena(&in->arena, &t->output_name, ".o", 2);
+		}
+
+		if (bc->parent) {
+			da_append_arena(&in->arena, &bc->parent->input_files, sv_from_sb(t->output_name));
+		}
+	}
+
+	for (size_t i = 0; i < bc->children.count; ++i) {
+		interpreter_expand_build_command_targets(in, bc->children.items[i]);
+	}
 }

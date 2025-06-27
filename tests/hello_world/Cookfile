@@ -1,1 +1,1 @@
-build(main).input(main.c)
+build(main)

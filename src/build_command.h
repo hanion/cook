@@ -5,6 +5,19 @@
 #include <stdio.h>
 
 
+typedef struct Target {
+	StringView name;
+	StringBuilder input_name;
+	StringBuilder output_name;
+} Target;
+
+typedef struct TargetList {
+	Target* items;
+	size_t count;
+	size_t capacity;
+} TargetList;
+
+
 typedef enum BuildType {
 	BUILD_EXECUTABLE,
 	BUILD_OBJECT,
@@ -28,9 +41,9 @@ struct BuildCommand {
 
 	BuildType build_type;
 
-	// NOTE: we should not inherit root input
 	size_t target_to_build;
-	StringList target_names;
+	TargetList targets;
+
 	StringList input_files;
 
 	StringList include_dirs;
