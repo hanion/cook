@@ -8,7 +8,9 @@ static const char* tests[] = {
 	"hello_world",
 	"complex",
 	"description",
-	"multiple",
+	"multiple_build",
+	"nested",
+	"multiple_target_names",
 };
 
 

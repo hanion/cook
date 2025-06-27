@@ -1,0 +1,3 @@
+build(foo).input(foo.c) {
+	build(bar).input(bar.c)
+}

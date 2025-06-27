@@ -227,7 +227,7 @@ void lexer_dump(Lexer* l) {
 	Lexer copy = *l;
 	Token t = lexer_next_token(&copy);
 	while (t.type != TOKEN_END) {
-		token_print(t, 0);
+		token_print(t, 1);
 		t = lexer_next_token(&copy);
 	}
 }

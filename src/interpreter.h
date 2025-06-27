@@ -10,7 +10,6 @@
 typedef struct Environment {
 	struct Environment* enclosing;
 	SymbolMap map;
-	BuildCommand* current_build_command;
 } Environment;
 
 
@@ -19,6 +18,7 @@ typedef struct {
 	bool had_error;
 	Arena arena;
 	Environment* current_environment;
+	BuildCommand* current_build_command;
 	int verbose;
 } Interpreter;
 
@@ -41,3 +41,5 @@ SymbolValue interpret_description(Interpreter* in, StatementDescription* s);
 
 SymbolValue interpreter_lookup_variable(Interpreter* in, StringView sv, Expression* e);
 
+
+SymbolValue interpret_method_build(Interpreter* in, ExpressionCall* e);

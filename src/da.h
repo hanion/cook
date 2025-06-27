@@ -95,3 +95,10 @@ static inline StringView sv_from_sb(StringBuilder sb) {
 		.items = sb.items
 	};
 }
+static inline StringBuilder sb_from_sv(StringView sv) {
+	return (StringBuilder) {
+		.count = sv.count,
+		.items = (char*)sv.items,
+		.capacity = sv.count
+	};
+}

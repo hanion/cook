@@ -1,0 +1,4 @@
+gcc -Wall -o foo foo.c 
+gcc -Wall -o bar bar.c 
+gcc -Wall -o baz baz.c 
+

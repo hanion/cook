@@ -428,6 +428,6 @@ void parser_dump(Parser* p) {
 	StatementList sl = parser_parse_all(&copy_parser);
 	for (size_t i = 0; i < sl.count; ++i) {
 		Statement* s = sl.items[i];
-		statement_print(s, 0);
+		statement_print(s, 1);
 	}
 }

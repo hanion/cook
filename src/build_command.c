@@ -2,7 +2,13 @@
 #include "da.h"
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
+BuildCommand* build_command_new(Arena* arena) {
+	BuildCommand* bc = (BuildCommand*)arena_alloc(arena, sizeof(BuildCommand));
+	*bc = build_command_default();
+	return bc;
+}
 
 BuildCommand build_command_default() {
 	static const StringView gcc = { .items = "gcc", .count = 3 };
@@ -17,12 +23,20 @@ BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent) {
 	if (!parent) {
 		return NULL;
 	}
-	BuildCommand* bc = (BuildCommand*)arena_alloc(arena, sizeof(BuildCommand));
-	*bc = *parent;
+	BuildCommand* bc = build_command_new(arena);
+
 	bc->parent = parent;
-	bc->target_names.count = 0;
-	bc->input_files.count = 0;
-	bc->children.count = 0;
+	bc->compiler = parent->compiler;
+	bc->include_dirs = parent->include_dirs;
+	bc->library_dirs = parent->library_dirs;
+	bc->cflags = parent->cflags;
+	bc->ldflags = parent->ldflags;
+	bc->source_dir = parent->source_dir;
+	bc->output_dir = parent->output_dir;
+
+	if (parent->parent != NULL) {
+		bc->build_type = BUILD_OBJECT;
+	}
 
 	da_append_arena(arena, &parent->children, bc);
 	return bc;
@@ -43,7 +57,10 @@ inline static void string_list_print_big(const char* label, const StringList* li
 	indent_label(indent, label);
 	for (size_t i = 0; i < list->count; ++i) {
 		const StringView* sv = &list->items[i];
-		printf("%.*s ", (int)sv->count, sv->items);
+		printf("%.*s", (int)sv->count, sv->items);
+		if (i + 1 < list->count) {
+			printf(", ");
+		}
 	}
 	printf("\n");
 }
@@ -59,6 +76,10 @@ void build_command_print(BuildCommand* bc, size_t indent) {
 		indent_label(2, "compiler");
 		printf("%.*s\n", (int)bc->compiler.count, bc->compiler.items);
 	}
+
+	indent_label(2, "build type");
+	build_type_print(bc->build_type);
+	printf("\n");
 
 	string_list_print_big("target names", &bc->target_names, 2);
 	string_list_print_big("input files", &bc->input_files, 2);
@@ -80,7 +101,7 @@ void build_command_print(BuildCommand* bc, size_t indent) {
 
 	if (bc->children.count > 0) {
 		print_indent(indent+ 1);
-		printf("children:\n");
+		printf("children: %zu\n", bc->children.count);
 		for (size_t i = 0; i < bc->children.count; ++i) {
 			print_indent(indent + 2);
 			printf("child %zu:\n", i);
@@ -117,15 +138,43 @@ void build_command_dump(BuildCommand* bc, FILE* stream) {
 		return;
 	}
 
+	// recurse into children
+	for (size_t i = 0; i < bc->children.count; ++i) {
+		build_command_dump(bc->children.items[i], stream);
+	}
+
+	if (bc->target_names.count == 0) {
+		return;
+	}
+	if (bc->target_names.count <= bc->target_to_build) {
+		return;
+	}
+
+
 	if (bc->compiler.count > 0) {
 		print_stringview(stream, bc->compiler);
 	}
 
 	string_list_print_flat(stream, &bc->cflags, "");
 
-	if (bc->target_names.count > 0) {
-		fprintf(stream, "-o ");
-		print_stringview(stream, bc->target_names.items[0]);
+	if (bc->build_type == BUILD_OBJECT) {
+		fprintf(stream, "-c ");
+	}
+
+	fprintf(stream, "-o ");
+	StringView target_name = bc->target_names.items[bc->target_to_build];
+	print_stringview(stream, target_name);
+
+	// NOTE: this should be done better
+	// should not put .c to end of obkjects like: `bar.o.c`
+
+	// infer source
+	StringBuilder inferred_file = {0};
+	da_append_many(&inferred_file, target_name.items, target_name.count);
+	da_append_many(&inferred_file, ".c\0", 3);
+
+	if (0 || access(inferred_file.items, F_OK) == 0) {
+		print_stringview(stream, sv_from_sb(inferred_file));
 	}
 
 	string_list_print_flat(stream, &bc->include_dirs, "-I");
@@ -136,12 +185,22 @@ void build_command_dump(BuildCommand* bc, FILE* stream) {
 
 	fprintf(stream, "\n");
 
-	// recurse into children
-	for (size_t i = 0; i < bc->children.count; ++i) {
-		build_command_dump(bc->children.items[i], stream);
+	if (bc->target_to_build == 0) {
+		for (size_t i = 1; i < bc->target_names.count; ++i) {
+			bc->target_to_build = i;
+			build_command_dump(bc, stream);
+		}
 	}
 }
 
 void build_command_execute(BuildCommand* bc) {
 	build_command_dump(bc, stdout);
+}
+
+void build_type_print(BuildType type) {
+	switch (type) {
+		case BUILD_EXECUTABLE: printf("executable"); return;
+		case BUILD_OBJECT:     printf("object");     return;
+		case BUILD_LIB:        printf("lib");        return;
+	}
 }

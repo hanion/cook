@@ -1,0 +1,2 @@
+gcc -c -o bar.o bar.c 
+gcc -o foo foo.c bar.o

@@ -17,8 +17,6 @@ static const SymbolValue nil = { .type = SYMBOL_VALUE_NIL };
 // DEBUG/RELEASE/MIN_SIZE_REL/DIST
 Environment* environment_new(Arena* arena) {
 	Environment* env = (Environment*)arena_alloc(arena, sizeof(Environment));
-	env->current_build_command = (BuildCommand*)arena_alloc(arena, sizeof(BuildCommand));
-	*env->current_build_command = build_command_default();
 	return env;
 }
 
@@ -27,6 +25,7 @@ Interpreter interpreter_new(Parser* p) {
 		.parser = p,
 	};
 	in.current_environment = environment_new(&in.arena);
+	in.current_build_command = build_command_new(&in.arena);
 	return in;
 }
 
@@ -51,7 +50,7 @@ BuildCommand* interpreter_interpret_build_command(Interpreter* in) {
 	for (size_t i = 0; i < sl.count; ++i) {
 		interpreter_execute(in, sl.items[i]);
 	}
-	return in->current_environment->current_build_command;
+	return in->current_build_command;
 }
 
 void interpreter_error(Interpreter* in, Token token, const char* error_cstr) {
@@ -97,30 +96,30 @@ SymbolValue interpret_block(Interpreter* in, StatementBlock*  s) {
 }
 
 SymbolValue interpret_description(Interpreter* in, StatementDescription* s) {
-	BuildCommand* enclosing = in->current_environment->current_build_command;
+	BuildCommand* enclosing = in->current_build_command;
 
 	SymbolValue left = interpreter_execute(in, s->statement);
 
 	if (left.type == SYMBOL_VALUE_BUILD_COMMAND) {
-		in->current_environment->current_build_command = left.bc;
+		in->current_build_command = left.bc;
 	}
 
 	for (size_t i = 0; i < s->block->block.statement_count; ++i) {
 		interpreter_execute(in, s->block->block.statements[i]);
 	}
 
-	in->current_environment->current_build_command = enclosing;
+	in->current_build_command = enclosing;
 	return left;
 }
 
 SymbolValue interpret_chain(Interpreter* in, ExpressionChain* e) {
 	SymbolValue left = interpreter_evaluate(in, e->left);
-	BuildCommand* enclosing = in->current_environment->current_build_command;
+	BuildCommand* enclosing = in->current_build_command;
 	if (left.type == SYMBOL_VALUE_BUILD_COMMAND) {
-		in->current_environment->current_build_command = left.bc;
+		in->current_build_command = left.bc;
 	}
 	interpreter_evaluate(in, e->right);
-	in->current_environment->current_build_command = enclosing;
+	in->current_build_command = enclosing;
 	return left;
 }
 
@@ -147,24 +146,9 @@ SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 
 	// append it to the current build context
 	if (callee.method_type == METHOD_BUILD) {
-		BuildCommand* enclosing = in->current_environment->current_build_command;
-		BuildCommand* bc = build_command_inherit(&in->arena, in->current_environment->current_build_command);
-
-		in->current_environment->current_build_command = bc;
-		for (size_t i = 0; i < e->argc; ++i) {
-			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
-			if (arg.type == SYMBOL_VALUE_STRING) {
-				da_append_arena(&in->arena, &in->current_environment->current_build_command->target_names, arg.string);
-			}
-		}
-		in->current_environment->current_build_command = enclosing;
-
-		return (SymbolValue){
-			.type = SYMBOL_VALUE_BUILD_COMMAND,
-			.bc = bc
-		};
+		return interpret_method_build(in, e);
 	} else if (callee.method_type == METHOD_INPUT) {
-		BuildCommand* bc = in->current_environment->current_build_command;
+		BuildCommand* bc = in->current_build_command;
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
@@ -176,11 +160,11 @@ SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 			interpreter_error(in, e->token, "compiler method takes only 1 argument");
 			return nil;
 		}
-		BuildCommand* bc = in->current_environment->current_build_command;
+		BuildCommand* bc = in->current_build_command;
 		SymbolValue arg = interpreter_evaluate(in, e->args[0]);
 		bc->compiler = arg.string;
 	} else if (callee.method_type == METHOD_CFLAGS) {
-		BuildCommand* bc = in->current_environment->current_build_command;
+		BuildCommand* bc = in->current_build_command;
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
@@ -188,7 +172,7 @@ SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 			}
 		}
 	} else if (callee.method_type == METHOD_LDFLAGS) {
-		BuildCommand* bc = in->current_environment->current_build_command;
+		BuildCommand* bc = in->current_build_command;
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
@@ -200,7 +184,7 @@ SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 			interpreter_error(in, e->token, "source_dir method takes only 1 argument");
 			return nil;
 		}
-		BuildCommand* bc = in->current_environment->current_build_command;
+		BuildCommand* bc = in->current_build_command;
 		SymbolValue arg = interpreter_evaluate(in, e->args[0]);
 		bc->source_dir = arg.string;
 	} else if (callee.method_type == METHOD_OUTPUT_DIR) {
@@ -208,11 +192,11 @@ SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 			interpreter_error(in, e->token, "output_dir method takes only 1 argument");
 			return nil;
 		}
-		BuildCommand* bc = in->current_environment->current_build_command;
+		BuildCommand* bc = in->current_build_command;
 		SymbolValue arg = interpreter_evaluate(in, e->args[0]);
 		bc->output_dir = arg.string;
 	} else if (callee.method_type == METHOD_INCLUDE_DIR) {
-		BuildCommand* bc = in->current_environment->current_build_command;
+		BuildCommand* bc = in->current_build_command;
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
@@ -220,7 +204,7 @@ SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 			}
 		}
 	} else if (callee.method_type == METHOD_LIBRARY_DIR) {
-		BuildCommand* bc = in->current_environment->current_build_command;
+		BuildCommand* bc = in->current_build_command;
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
@@ -228,7 +212,7 @@ SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 			}
 		}
 	} else if (callee.method_type == METHOD_LINK) {
-		BuildCommand* bc = in->current_environment->current_build_command;
+		BuildCommand* bc = in->current_build_command;
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
@@ -263,4 +247,35 @@ SymbolValue interpreter_lookup_variable(Interpreter* in, StringView sv, Expressi
 	METHOD("link",        METHOD_LINK);
 
 	return val;
+}
+
+SymbolValue interpret_method_build(Interpreter* in, ExpressionCall* e) {
+	// TODO: infer the main input file
+	BuildCommand* enclosing = in->current_build_command;
+	BuildCommand* bc = build_command_inherit(&in->arena, in->current_build_command);
+	in->current_build_command = bc;
+
+	for (size_t i = 0; i < e->argc; ++i) {
+		SymbolValue arg = interpreter_evaluate(in, e->args[i]);
+		if (arg.type == SYMBOL_VALUE_STRING) {
+			if (in->current_build_command->build_type == BUILD_OBJECT) {
+				StringBuilder sbarg = sb_from_sv(arg.string);
+				da_append_many_arena(&in->arena, &sbarg, ".o", 2);
+				StringView svarg = sv_from_sb(sbarg);
+				da_append_arena(&in->arena, &in->current_build_command->target_names, svarg);
+				if (in->current_build_command->parent) {
+					da_append_arena(&in->arena, &in->current_build_command->parent->input_files, svarg);
+				}
+			} else {
+				da_append_arena(&in->arena, &in->current_build_command->target_names, arg.string);
+			}
+		}
+	}
+	
+	in->current_build_command = enclosing;
+
+	return (SymbolValue){
+		.type = SYMBOL_VALUE_BUILD_COMMAND,
+		.bc = bc
+	};
 }
