@@ -14,8 +14,10 @@ static const char* tests[] = {
 };
 
 
+#ifndef _WIN32
 FILE * popen(const char*, const char*);
 int pclose(FILE*);
+#endif
 
 
 bool compare_expected_cmd(const char* expected_cmd_path_cstr, StringBuilder* output) {

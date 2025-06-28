@@ -11,7 +11,7 @@ typedef struct CookOptions {
 
 static inline CookOptions cook_options_default() {
 	return (CookOptions){
-		.dry_run = true,
+		.dry_run = false,
 		.verbose = 0,
 	};
 }

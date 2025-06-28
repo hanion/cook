@@ -1,10 +1,12 @@
 #include "build_command.h"
 #include "da.h"
+#include "file.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
 
 #define INDENT_MULTIPLIER 4
+#define CMD_LINE_MAX 2000
 
 BuildCommand* build_command_new(Arena* arena) {
 	BuildCommand* bc = (BuildCommand*)arena_alloc(arena, sizeof(BuildCommand));
@@ -195,8 +197,53 @@ void build_command_dump(BuildCommand* bc, FILE* stream) {
 	}
 }
 
+
+static inline int execute_line(const char* line) {
+#ifdef _WIN32
+		char full_command[CMD_LINE_MAX + 16];
+		snprintf(full_command, sizeof(full_command), "cmd /C \"%s\"", line);
+		return system(full_command);
+#else
+	return system(line);
+#endif
+}
+
+
 void build_command_execute(BuildCommand* bc) {
-	build_command_dump(bc, stdout);
+	// create output dir
+	{
+		StringBuilder sb = {0};
+		da_append_many(&sb, bc->output_dir.items, bc->output_dir.count);
+		da_append(&sb,'\0');
+		if (access(sb.items, F_OK) != 0) {
+			MKDIR(sb.items);
+		}
+		free(sb.items);
+	}
+
+	FILE* script = tmpfile();
+	if (!script) {
+		perror("tmpfile");
+		exit(1);
+	}
+
+	build_command_dump(bc, script);
+
+	rewind(script);
+	char line[CMD_LINE_MAX];
+	while (fgets(line, sizeof(line), script)) {
+		size_t len = strlen(line);
+		while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
+			line[--len] = '\0';
+		}
+		printf("> %.*s\n", (int)len, line);
+		int ret = execute_line(line);
+		if (ret != 0) {
+			break;
+		}
+	}
+
+	fclose(script);
 }
 
 void build_type_print(BuildType type) {

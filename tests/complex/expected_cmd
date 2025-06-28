@@ -1,6 +1,6 @@
-g++ -Wall -Wextra -Werror -g -c -o main.o main.cpp -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm -Llibs/glfw/lib -Llibs/glew/lib 
-g++ -Wall -Wextra -Werror -g -c -o input.o input.cpp -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm -Llibs/glfw/lib -Llibs/glew/lib 
-g++ -Wall -Wextra -Werror -g -c -o window.o window.cpp -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm -Llibs/glfw/lib -Llibs/glew/lib 
-g++ -Wall -Wextra -Werror -g -c -o renderer.o renderer.cpp -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm -Llibs/glfw/lib -Llibs/glew/lib 
-g++ -Wall -Wextra -Werror -g -c -o imgui.o imgui.cpp -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm -Llibs/glfw/lib -Llibs/glew/lib 
-g++ -Wall -Wextra -Werror -g -o game game.cpp -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm main.o input.o window.o renderer.o imgui.o -Llibs/glfw/lib -Llibs/glew/lib -lglfw -lGLEW -lGL -ldl -lpthread
+g++ -Wall -Wextra -Werror -g -c -o build/main.o src/main.cpp -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm -Llibs/glfw/lib -Llibs/glew/lib 
+g++ -Wall -Wextra -Werror -g -c -o build/input.o src/input.cpp -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm -Llibs/glfw/lib -Llibs/glew/lib 
+g++ -Wall -Wextra -Werror -g -c -o build/window.o src/window.cpp -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm -Llibs/glfw/lib -Llibs/glew/lib 
+g++ -Wall -Wextra -Werror -g -c -o build/renderer.o src/renderer.cpp -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm -Llibs/glfw/lib -Llibs/glew/lib 
+g++ -Wall -Wextra -Werror -g -c -o build/imgui.o src/imgui.cpp -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm -Llibs/glfw/lib -Llibs/glew/lib 
+g++ -Wall -Wextra -Werror -g -o build/game src/game.cpp -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm build/main.o build/input.o build/window.o build/renderer.o build/imgui.o -Llibs/glfw/lib -Llibs/glew/lib -lglfw -lGLEW -lGL -ldl -lpthread

@@ -59,7 +59,7 @@ BuildCommand* interpreter_interpret_build_command(Interpreter* in) {
 void interpreter_error(Interpreter* in, Token token, const char* error_cstr) {
 	in->had_error = true;
 	fprintf(stderr,"[ERROR][interpreter] %zu:%zu %s\n\t%s %.*s\n",
-		 token.line, token.column,
+		 token.line + 1, token.column,
 		 error_cstr, token_name_cstr(token), (int)token.str.count, token.str.items);
 	raise(1);
 }
@@ -134,14 +134,21 @@ SymbolValue interpret_chain(Interpreter* in, ExpressionChain* e) {
 
 SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 	SymbolValue callee = interpreter_evaluate(in, e->callee);
+	Token callee_token = {
+		.type = TOKEN_IDENTIFIER,
+		.str.count = callee.string.count,
+		.str.items = callee.string.items,
+		.line = e->token.line,
+		.column = e->token.column,
+	};
 
 	if (callee.type == SYMBOL_VALUE_NIL) {
-		interpreter_error(in, e->token, "callee is nil");
+		interpreter_error(in, callee_token, "callee is nil");
 		return nil;
 	}
 	
 	if (callee.type != SYMBOL_VALUE_METHOD) {
-		interpreter_error(in, e->token, "callee is not a method");
+		interpreter_error(in, callee_token, "callee is not a method");
 		return nil;
 	}
 
@@ -231,6 +238,7 @@ SymbolValue interpreter_lookup_variable(Interpreter* in, StringView sv, Expressi
 	SymbolValue val = {0};
 	val.string.items = sv.items;
 	val.string.count = sv.count;
+	val.type = SYMBOL_VALUE_STRING;
 
 	#define METHOD(name, enm)                         \
 		if (strncmp(name, sv.items, sv.count) == 0) { \
@@ -280,6 +288,10 @@ void interpreter_expand_build_command_targets(Interpreter* in, BuildCommand* bc)
 		Target* t = &bc->targets.items[i];
 
 		t->input_name.count = 0;
+		if (bc->source_dir.count > 0) {
+			da_append_many_arena(&in->arena, &t->input_name, bc->source_dir.items, bc->source_dir.count);
+			da_append_arena(&in->arena, &t->input_name, '/');
+		}
 		da_append_many_arena(&in->arena, &t->input_name, t->name.items, t->name.count);
 		if ((bc->compiler.count == 3 && strncmp(bc->compiler.items, "gcc", 3) == 0) ||
 			(bc->compiler.count == 5 && strncmp(bc->compiler.items, "clang", 5) == 0)
@@ -290,6 +302,11 @@ void interpreter_expand_build_command_targets(Interpreter* in, BuildCommand* bc)
 		}
 
 		t->output_name.count = 0;
+
+		if (bc->output_dir.count > 0) {
+			da_append_many_arena(&in->arena, &t->output_name, bc->output_dir.items, bc->output_dir.count);
+			da_append_arena(&in->arena, &t->output_name, '/');
+		}
 		da_append_many_arena(&in->arena, &t->output_name, t->name.items, t->name.count);
 		if (bc->build_type == BUILD_OBJECT) {
 			da_append_many_arena(&in->arena, &t->output_name, ".o", 2);
