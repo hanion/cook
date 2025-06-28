@@ -11,6 +11,7 @@
 #include "cook.h"
 #include "file.h"
 #include <stdio.h>
+#include <unistd.h>
 
 void print_usage(const char* pname) {
 	fprintf(stderr,
@@ -66,6 +67,8 @@ int main(int argc, char** argv) {
 		if (!read_entire_file(filepath, &source)) {
 			return 1;
 		}
+		op.source = sv_from_sb(source);
+	} else if (access("./Cookfile", F_OK) == 0 && read_entire_file("./Cookfile", &source)) {
 		op.source = sv_from_sb(source);
 	} else {
 		print_usage(pname);

@@ -47,8 +47,8 @@ bool compare_expected_cmd(const char* expected_cmd_path_cstr, StringBuilder* out
 
 	if (!result) {
 		printf("failed\n");
-		printf("output   (%zu lines):\n%.*s\n", output->count, (int)output->count, output->items);
-		printf("expected (%zu lines):\n%.*s\n", file.count,    (int)file.count,    file.items);
+		printf("[tester] output   (%zu chars):\n%.*s\n", output->count, (int)output->count, output->items);
+		printf("[tester] expected (%zu chars):\n%.*s\n", file.count,    (int)file.count,    file.items);
 	}
 	sb_free(&file);
 	return result;
@@ -102,7 +102,7 @@ int main(void) {
 		da_append_many(&expected_cmd, expected_path, strlen(expected_path));
 		da_append(&expected_cmd, 0);
 
-		printf("* test[%zu](%s): ", i, tests[i]);
+		printf("[tester] test[%zu] (%s): ", i, tests[i]);
 
 		bool run_test_result = run_test(test_cmd.items, &output_cmd);
 

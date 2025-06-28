@@ -4,6 +4,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#define INDENT_MULTIPLIER 4
+
 BuildCommand* build_command_new(Arena* arena) {
 	BuildCommand* bc = (BuildCommand*)arena_alloc(arena, sizeof(BuildCommand));
 	*bc = build_command_default();
@@ -43,15 +45,10 @@ BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent) {
 }
 
 
-inline static void print_indent(int indent) {
-	for (int i = 0; i < indent; ++i) {
-		putchar(' ');
-	}
-}
 inline static void indent_label(int indent, const char* label) {
-	printf("%*s%16s: ", indent, "", label);
+	printf("%*s%-14s: ", indent * INDENT_MULTIPLIER, "", label);
 }
-inline static void string_list_print_big(const char* label, const StringList* list, int indent) {
+inline static void string_list_print_big(int indent, const char* label, const StringList* list) {
 	if (list->count == 0) return;
 
 	indent_label(indent, label);
@@ -64,7 +61,7 @@ inline static void string_list_print_big(const char* label, const StringList* li
 	}
 	printf("\n");
 }
-inline static void target_list_print_big(const char* label, const TargetList* list, int indent) {
+inline static void target_list_print_big(int indent, const char* label, const TargetList* list) {
 	if (list->count == 0) return;
 
 	indent_label(indent, label);
@@ -82,44 +79,46 @@ void build_command_print(BuildCommand* bc, size_t indent) {
 	if (!bc) {
 		return;
 	}
+	size_t ni = indent + 1;
 
-	print_indent(indent);
-	printf("build command:\n");
+	indent_label(ni, "build command");
+	printf("\n");
+
 
 	if (bc->compiler.count > 0) {
-		indent_label(2, "compiler");
+		indent_label(ni, "compiler");
 		printf("%.*s\n", (int)bc->compiler.count, bc->compiler.items);
 	}
 
-	indent_label(2, "build type");
+	indent_label(ni, "build type");
 	build_type_print(bc->build_type);
 	printf("\n");
 
-	target_list_print_big("targets", &bc->targets, 2);
-	string_list_print_big("input files", &bc->input_files, 2);
-	string_list_print_big("include dirs", &bc->include_dirs, 2);
-	string_list_print_big("include files", &bc->include_files, 2);
-	string_list_print_big("library dirs", &bc->library_dirs, 2);
-	string_list_print_big("library links", &bc->library_links, 2);
-	string_list_print_big("cflags", &bc->cflags, 2);
-	string_list_print_big("ldflags", &bc->ldflags, 2);
+	target_list_print_big(ni, "targets", &bc->targets);
+	string_list_print_big(ni, "input files", &bc->input_files);
+	string_list_print_big(ni, "include dirs", &bc->include_dirs);
+	string_list_print_big(ni, "include files", &bc->include_files);
+	string_list_print_big(ni, "library dirs", &bc->library_dirs);
+	string_list_print_big(ni, "library links", &bc->library_links);
+	string_list_print_big(ni, "cflags", &bc->cflags);
+	string_list_print_big(ni, "ldflags", &bc->ldflags);
 
 	if (bc->source_dir.count > 0) {
-		indent_label(2, "source dir");
+		indent_label(ni, "source dir");
 		printf("%.*s\n", (int)bc->source_dir.count, bc->source_dir.items);
 	}
 	if (bc->output_dir.count > 0) {
-		indent_label(2, "output dir");
+		indent_label(ni, "output dir");
 		printf("%.*s\n", (int)bc->output_dir.count, bc->output_dir.items);
 	}
 
 	if (bc->children.count > 0) {
-		print_indent(indent+ 1);
-		printf("children: %zu\n", bc->children.count);
+		indent_label(ni, "children");
+		printf("%zu\n", bc->children.count);
 		for (size_t i = 0; i < bc->children.count; ++i) {
-			print_indent(indent + 2);
-			printf("child %zu:\n", i);
-			build_command_print(bc->children.items[i], indent + 3);
+			indent_label(indent + 2, "child");
+			printf("%zu\n", i);
+			build_command_print(bc->children.items[i], indent + 2);
 		}
 	}
 }

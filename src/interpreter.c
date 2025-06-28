@@ -41,7 +41,7 @@ void interpreter_dry_run(Interpreter* in) {
 	BuildCommand* bc = interpreter_interpret_build_command(in);
 	if (in->verbose > 0) {
 		printf("[interpreter] build command pretty:\n");
-		build_command_print(bc, 1);
+		build_command_print(bc, 0);
 		printf("[interpreter] build command dump:\n");
 	}
 	build_command_dump(bc, stdout);
