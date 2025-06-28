@@ -1,0 +1,13 @@
+compiler(gcc)
+cflags(-Wall, -Werror, -Wpedantic, -g3)
+source_dir(src)
+output_dir(build)
+
+build(tester).build(file)
+
+build(cook) {
+	build(file, token, lexer, arena, parser, expression,
+		statement, interpreter, symbol, build_command, main)
+}
+
+

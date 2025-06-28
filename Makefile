@@ -43,5 +43,8 @@ clean:
 run: $(LINUX_BIN)
 	./build/cook --verbose
 
+runm: $(MINGW_BIN)
+	WINEDEBUG=-all wine build/m/cook.exe --verbose
+
 test: build/tester $(LINUX_BIN)
 	./build/tester
