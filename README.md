@@ -98,7 +98,7 @@ include_dir(include, imgui, libs/glfw/include, libs/glew/include, libs/glm)
 library_dir(libs/glfw/lib, libs/glew/lib)
 
 build(game) {
-    link(glfw, GLEW, GL, dl, pthread)
+    link(glfw, GLEW, GL, dl, m)
     build(main, input, window, renderer, imgui)
 }
 ```
@@ -108,4 +108,29 @@ build(game) {
 * `build(game)` defines the final output: `build/game`
 * nested builds are object files compiled before linking
 * inherits all settings above (compiler, flags, dirs)
+
+#### make equivalent:
+```make
+CXX      = g++
+CFLAGS   = -Wall -Wextra -Werror -g
+INCLUDES = -Iinclude -Iimgui -Ilibs/glfw/include -Ilibs/glew/include -Ilibs/glm
+LDFLAGS  = -Llibs/glfw/lib -Llibs/glew/lib
+LDLIBS   = -lglfw -lGLEW -lGL -ldl -lm
+
+SRC_DIR   = src
+BUILD_DIR = build
+
+SRCS = game.cpp main.cpp input.cpp window.cpp renderer.cpp imgui.cpp
+OBJS = $(SRCS:%.cpp=$(BUILD_DIR)/%.o)
+
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cpp | $(BUILD_DIR)
+    $(CXX) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(BUILD_DIR)/game: $(OBJS)
+    $(CXX) $(OBJS) $(LDFLAGS) $(LDLIBS) -o $@
+
+$(BUILD_DIR):
+    mkdir -p $(BUILD_DIR)
+```
+
 
