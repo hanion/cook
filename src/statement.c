@@ -20,17 +20,14 @@ const char* statement_name_cstr(StatementType st) {
 	return "!!! STATEMENT INVALID";
 }
 
-inline static void print_indent(int indent) {
-	for (int i = 0; i < indent; ++i) {
-		putchar(' ');
-	}
-}
 void statement_print(Statement* s, int indent) {
 	if (!s) {
 		return;
 	}
 
-	print_indent(indent);
+	for (int i = 0; i < indent; ++i) {
+		putchar(' ');
+	}
 
 	printf("%s\n", statement_name_cstr(s->type));
 

@@ -100,13 +100,10 @@ bool token_equals(Token token, const char* cstr) {
 	return memcmp(token.str.items, cstr, token.str.count) == 0;
 }
 
-inline static void print_indent(int indent) {
+void token_print(Token t, int indent) {
 	for (int i = 0; i < indent; ++i) {
 		putchar(' ');
 	}
-}
-void token_print(Token t, int indent) {
-	print_indent(indent);
 	printf("token: %3zu:%-3zu %-18s '%.*s'\n",
 		 t.line, t.column, token_name_cstr(t), (int)t.str.count, t.str.items);
 }

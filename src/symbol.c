@@ -16,13 +16,10 @@ const char* symbol_value_type_name_cstr(SymbolValueType type) {
 	return "!!! SYMBOL VALUE TYPE INVALID";
 }
 
-inline static void print_indent(int indent) {
+void symbol_value_print(SymbolValue value, int indent) {
 	for (int i = 0; i < indent; ++i) {
 		putchar(' ');
 	}
-}
-void symbol_value_print(SymbolValue value, int indent) {
-	print_indent(indent);
 	printf("symbol ");
 	switch (value.type) {
 		case SYMBOL_VALUE_NIL:    printf("nil"); break;
