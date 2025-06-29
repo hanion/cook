@@ -1,13 +1,3 @@
-/*
- * cook - better make
- *
- * includes chunks of code from:
- *     nob - v1.20.6 - Public Domain - https://github.com/tsoding/nob.h
- *     by Tsoding - https://github.com/tsoding
- *
- * author: haion.dev - github.com/hanion
- */
-
 #include "cook.h"
 #include "file.h"
 #include <stdio.h>
