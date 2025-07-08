@@ -1,6 +1,6 @@
 #include "statement.h"
 
-StatementList statement_list_new() {
+StatementList statement_list_new(void) {
 	StatementList statement_list = {
 		.count = 0,
 		.capacity = 0,

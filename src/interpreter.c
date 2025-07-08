@@ -44,7 +44,7 @@ void interpreter_dry_run(Interpreter* in) {
 		build_command_print(bc, 0);
 		printf("[interpreter] build command dump:\n");
 	}
-	build_command_dump(bc, stdout);
+	build_command_dump(bc, stdout, 0);
 }
 
 BuildCommand* interpreter_interpret_build_command(Interpreter* in) {

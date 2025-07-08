@@ -1,0 +1,8 @@
+source_dir(src)
+output_dir(build)
+build(foo) {
+	build(bar) {
+		source_dir(barsrc)
+		output_dir(barbuild)
+	}
+}

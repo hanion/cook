@@ -41,7 +41,7 @@ typedef struct {
 } StatementList;
 
 
-StatementList statement_list_new();
+StatementList statement_list_new(void);
 
 const char* statement_name_cstr(StatementType st);
 

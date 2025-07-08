@@ -14,7 +14,7 @@ BuildCommand* build_command_new(Arena* arena) {
 	return bc;
 }
 
-BuildCommand build_command_default() {
+BuildCommand build_command_default(void) {
 	static const StringView gcc = { .items = "gcc", .count = 3 };
 
 	BuildCommand bc = {0};
@@ -70,6 +70,7 @@ inline static void target_list_print_big(int indent, const char* label, const Ta
 	for (size_t i = 0; i < list->count; ++i) {
 		const Target* sv = &list->items[i];
 		printf("%.*s", (int)sv->name.count, sv->name.items);
+		printf(":%.*s", (int)sv->output_name.count, sv->output_name.items);
 		if (i + 1 < list->count) {
 			printf(", ");
 		}
@@ -140,7 +141,7 @@ inline static void string_list_print_flat(FILE* stream, const StringList* list, 
 	}
 }
 
-void build_command_dump(BuildCommand* bc, FILE* stream) {
+void build_command_dump(BuildCommand* bc, FILE* stream, size_t target_to_build) {
 	if (!bc) {
 		return;
 	}
@@ -148,20 +149,20 @@ void build_command_dump(BuildCommand* bc, FILE* stream) {
 	// skip root bc
 	if (!bc->parent) {
 		for (size_t i = 0; i < bc->children.count; ++i) {
-			build_command_dump(bc->children.items[i], stream);
+			build_command_dump(bc->children.items[i], stream, 0);
 		}
 		return;
 	}
 
 	// recurse into children
 	for (size_t i = 0; i < bc->children.count; ++i) {
-		build_command_dump(bc->children.items[i], stream);
+		build_command_dump(bc->children.items[i], stream, 0);
 	}
 
 	if (bc->targets.count == 0) {
 		return;
 	}
-	if (bc->targets.count <= bc->target_to_build) {
+	if (bc->targets.count <= target_to_build) {
 		return;
 	}
 
@@ -177,7 +178,7 @@ void build_command_dump(BuildCommand* bc, FILE* stream) {
 	}
 
 	fprintf(stream, "-o ");
-	Target* t = &bc->targets.items[bc->target_to_build];
+	Target* t = &bc->targets.items[target_to_build];
 	print_stringview(stream, sv_from_sb(t->output_name));
 	print_stringview(stream, sv_from_sb(t->input_name));
 
@@ -189,10 +190,9 @@ void build_command_dump(BuildCommand* bc, FILE* stream) {
 
 	fprintf(stream, "\n");
 
-	if (bc->target_to_build == 0) {
+	if (target_to_build == 0) {
 		for (size_t i = 1; i < bc->targets.count; ++i) {
-			bc->target_to_build = i;
-			build_command_dump(bc, stream);
+			build_command_dump(bc, stream, i);
 		}
 	}
 }
@@ -227,7 +227,7 @@ void build_command_execute(BuildCommand* bc) {
 		exit(1);
 	}
 
-	build_command_dump(bc, script);
+	build_command_dump(bc, script, 0);
 
 	rewind(script);
 	char line[CMD_LINE_MAX];
@@ -236,7 +236,7 @@ void build_command_execute(BuildCommand* bc) {
 		while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
 			line[--len] = '\0';
 		}
-		printf("> %.*s\n", (int)len, line);
+		printf("$ %.*s\n", (int)len, line);
 		int ret = execute_line(line);
 		if (ret != 0) {
 			break;

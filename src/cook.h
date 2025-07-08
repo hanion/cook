@@ -9,7 +9,7 @@ typedef struct CookOptions {
 	int verbose;
 } CookOptions;
 
-static inline CookOptions cook_options_default() {
+static inline CookOptions cook_options_default(void) {
 	return (CookOptions){
 		.dry_run = false,
 		.verbose = 0,

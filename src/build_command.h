@@ -41,7 +41,6 @@ struct BuildCommand {
 
 	BuildType build_type;
 
-	size_t target_to_build;
 	TargetList targets;
 
 	StringList input_files;
@@ -61,10 +60,10 @@ struct BuildCommand {
 
 BuildCommand* build_command_new(Arena*);
 
-BuildCommand build_command_default();
+BuildCommand build_command_default(void);
 void         build_command_print  (BuildCommand* bc, size_t indent);
 void         build_command_execute(BuildCommand* bc);
-void         build_command_dump   (BuildCommand* bc, FILE* stream);
+void         build_command_dump   (BuildCommand* bc, FILE* stream, size_t target_to_build);
 
 BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent);
 

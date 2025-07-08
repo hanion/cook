@@ -6,6 +6,7 @@
 
 static const char* tests[] = {
 	"hello_world",
+	"dirs",
 	"complex",
 	"description",
 	"multiple_build",
@@ -85,6 +86,12 @@ int main(void) {
 	StringBuilder expected_cmd = {0};
 
 	size_t test_count   = sizeof(tests)/sizeof(tests[0]);
+	size_t max_test_name_count = 0;
+	for (size_t j = 0; j < test_count; ++j) {
+		if (strlen(tests[j]) > max_test_name_count)
+			max_test_name_count = strlen(tests[j]);
+	}
+
 	size_t failed_count = 0;
 
 	for (size_t i = 0; i < test_count; ++i) {
@@ -104,7 +111,7 @@ int main(void) {
 		da_append_many(&expected_cmd, expected_path, strlen(expected_path));
 		da_append(&expected_cmd, 0);
 
-		printf("[tester] test[%zu] (%s): ", i, tests[i]);
+		printf("[tester] test[%1zu] %-*s : ", i, (int)max_test_name_count, tests[i]);
 
 		bool run_test_result = run_test(test_cmd.items, &output_cmd);
 
