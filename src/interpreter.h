@@ -1,34 +1,21 @@
 #pragma once
 #include "da.h"
 #include "expression.h"
-#include "parser.h"
 #include "statement.h"
 #include "symbol.h"
 #include "build_command.h"
 
 
-typedef struct Environment {
-	struct Environment* enclosing;
-	SymbolMap map;
-} Environment;
-
-
 typedef struct {
-	Parser* parser;
-	bool had_error;
 	Arena arena;
-	Environment* current_environment;
-	BuildCommand* current_build_command;
 	int verbose;
+	bool had_error;
+	BuildCommand* root_build_command;
+	Environment* current_environment;
 } Interpreter;
 
-Environment* environment_new(Arena*);
-Interpreter interpreter_new(Parser*);
-
-void interpreter_interpret(Interpreter*);
-void interpreter_dry_run  (Interpreter*);
-
-BuildCommand* interpreter_interpret_build_command(Interpreter*);
+Interpreter interpreter_new(BuildCommand*);
+void interpreter_interpret (Interpreter*);
 
 void interpreter_error(Interpreter* in, Token token, const char* error_cstr);
 

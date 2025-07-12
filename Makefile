@@ -1,8 +1,8 @@
 CC_LINUX = gcc
 CC_MINGW = x86_64-w64-mingw32-gcc
-CFLAGS   = -Wall -Werror -Wpedantic -g3
+CFLAGS   = -Wall -Werror -Wpedantic -g3 -static
 
-SRCS := src/file.c src/token.c src/lexer.c src/arena.c src/parser.c src/expression.c src/statement.c src/interpreter.c src/symbol.c src/build_command.c src/cook.c src/main.c
+SRCS := src/file.c src/token.c src/lexer.c src/arena.c src/parser.c src/expression.c src/statement.c src/interpreter.c src/symbol.c src/build_command.c src/constructor.c src/executer.c src/cook.c src/main.c
 OBJS := $(SRCS:src/%.c=build/%.o)
 
 MINGW_OBJS := $(SRCS:src/%.c=build/m/%.o)

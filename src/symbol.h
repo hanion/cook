@@ -1,4 +1,5 @@
 #pragma once
+#include "arena.h"
 #include "da.h"
 
 typedef enum SymbolValueType {
@@ -11,6 +12,7 @@ typedef enum SymbolValueType {
 } SymbolValueType;
 
 typedef enum MethodType {
+	METHOD_NONE = 0,
 	METHOD_BUILD,
 	METHOD_COMPILER,
 	METHOD_INPUT,
@@ -21,6 +23,8 @@ typedef enum MethodType {
 	METHOD_INCLUDE_DIR,
 	METHOD_LIBRARY_DIR,
 	METHOD_LINK,
+	METHOD_DIRTY,
+	METHOD_ECHO,
 } MethodType;
 
 typedef struct SymbolValue {
@@ -48,5 +52,14 @@ typedef struct SymbolMap {
 } SymbolMap;
 
 
+typedef struct Environment {
+	struct Environment* enclosing;
+	SymbolMap map;
+} Environment;
+Environment* environment_new(Arena*);
+
+
 const char* symbol_value_type_name_cstr(SymbolValueType);
 void symbol_value_print(SymbolValue value, int indent);
+
+MethodType method_extract(StringView sv);

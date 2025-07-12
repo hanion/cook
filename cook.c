@@ -186,13 +186,6 @@ static inline StringView sv_from_sb(StringBuilder sb) {
 		.items = sb.items
 	};
 }
-static inline StringBuilder sb_from_sv(StringView sv) {
-	return (StringBuilder) {
-		.count = sv.count,
-		.items = (char*)sv.items,
-		.capacity = sv.count
-	};
-}
 
 #include <stdbool.h>
 #include <sys/stat.h>
@@ -1027,7 +1020,7 @@ typedef struct {
 } StatementList;
 
 
-StatementList statement_list_new();
+StatementList statement_list_new(void);
 
 const char* statement_name_cstr(StatementType st);
 
@@ -1039,13 +1032,13 @@ typedef struct {
 	Token current;
 	Token next;
 	Token previous;
-	bool had_error;
 	Arena arena;
+	bool had_error;
 } Parser;
 
 Parser parser_new(Lexer* lexer);
 
-StatementList parser_parse_all(Parser* p);
+Statement* parser_parse_all(Parser* p);
 
 void parser_error_at_token(Parser* p, Token token, const char* error_cstr);
 
@@ -1082,6 +1075,7 @@ Statement* parse_block_statement     (Parser* p);
 Statement* parse_expression_statement(Parser* p);
 
 void parser_dump(Parser* p);
+
 
 
 
@@ -1440,7 +1434,7 @@ float parse_literal_float(const char* str, size_t len) {
 
 
 
-StatementList parser_parse_all(Parser* p) {
+Statement* parser_parse_all(Parser* p) {
 	StatementList statement_list = statement_list_new();
 
 	while (!parser_is_at_end(p)) {
@@ -1448,7 +1442,12 @@ StatementList parser_parse_all(Parser* p) {
 		da_append_arena(&p->arena, &statement_list, s);
 	}
 
-	return statement_list;
+	Statement* root = parser_arena_alloc_statement(p);
+	root->block.statement_count = statement_list.count;
+	root->block.statements = statement_list.items;
+	root->type = STATEMENT_BLOCK;
+
+	return root;
 }
 
 Statement* parse_declaration(Parser* p) {
@@ -1503,17 +1502,9 @@ void parser_dump(Parser* p) {
 	Lexer  copy_lexer  = *p->lexer;
 	copy_parser.lexer = &copy_lexer;
 
-// 	Expression* e = parse_expression(&copy_parser);
-// 	while (e != NULL) {
-// 		expression_print(e, 0);
-// 		e = parse_expression(&copy_parser);
-// 	}
-
-	StatementList sl = parser_parse_all(&copy_parser);
-	for (size_t i = 0; i < sl.count; ++i) {
-		Statement* s = sl.items[i];
-		statement_print(s, 1);
-	}
+	Statement* root = parser_parse_all(&copy_parser);
+	statement_print(root, 1);
+	arena_free(&copy_parser.arena);
 }
 
 
@@ -1610,7 +1601,7 @@ void expression_print(Expression* expr, int indent) {
 }
 
 
-StatementList statement_list_new() {
+StatementList statement_list_new(void) {
 	StatementList statement_list = {
 		.count = 0,
 		.capacity = 0,
@@ -1639,7 +1630,7 @@ void statement_print(Statement* s, int indent) {
 		putchar(' ');
 	}
 
-	printf("%s\n", statement_name_cstr(s->type));
+	printf("%s  %p\n", statement_name_cstr(s->type), (void*)s);
 
 	switch (s->type) {
 		case STATEMENT_EXPRESSION:
@@ -1661,9 +1652,6 @@ void statement_print(Statement* s, int indent) {
 
 
 
-
-
-
 typedef enum SymbolValueType {
 	SYMBOL_VALUE_NIL = 0,
 	SYMBOL_VALUE_INT,
@@ -1674,6 +1662,7 @@ typedef enum SymbolValueType {
 } SymbolValueType;
 
 typedef enum MethodType {
+	METHOD_NONE = 0,
 	METHOD_BUILD,
 	METHOD_COMPILER,
 	METHOD_INPUT,
@@ -1684,6 +1673,8 @@ typedef enum MethodType {
 	METHOD_INCLUDE_DIR,
 	METHOD_LIBRARY_DIR,
 	METHOD_LINK,
+	METHOD_DIRTY,
+	METHOD_ECHO,
 } MethodType;
 
 typedef struct SymbolValue {
@@ -1711,8 +1702,18 @@ typedef struct SymbolMap {
 } SymbolMap;
 
 
+typedef struct Environment {
+	struct Environment* enclosing;
+	SymbolMap map;
+} Environment;
+Environment* environment_new(Arena*);
+
+
 const char* symbol_value_type_name_cstr(SymbolValueType);
 void symbol_value_print(SymbolValue value, int indent);
+
+MethodType method_extract(StringView sv);
+
 
 
 
@@ -1757,7 +1758,6 @@ struct BuildCommand {
 
 	BuildType build_type;
 
-	size_t target_to_build;
 	TargetList targets;
 
 	StringList input_files;
@@ -1773,44 +1773,370 @@ struct BuildCommand {
 
 	StringView source_dir;
 	StringView output_dir;
+
+	// StringList defines;
+
+	// NOTE: needed for the second pass
+	Statement* body;
+	bool dirty;
 };
 
 BuildCommand* build_command_new(Arena*);
 
-BuildCommand build_command_default();
+BuildCommand build_command_default(void);
 void         build_command_print  (BuildCommand* bc, size_t indent);
-void         build_command_execute(BuildCommand* bc);
-void         build_command_dump   (BuildCommand* bc, FILE* stream);
+void         build_command_dump   (BuildCommand* bc, FILE* stream, size_t target_to_build);
 
 BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent);
 
 void build_type_print(BuildType type);
 
+void build_command_mark_all_children_dirty(BuildCommand* bc);
 
 
-
-typedef struct Environment {
-	struct Environment* enclosing;
-	SymbolMap map;
-} Environment;
 
 
 typedef struct {
-	Parser* parser;
-	bool had_error;
 	Arena arena;
-	Environment* current_environment;
+	bool had_error;
+	Environment*  current_environment;
 	BuildCommand* current_build_command;
+	Statement*    current_statement;
+} Constructor;
+
+Constructor constructor_new(Statement*);
+
+BuildCommand* constructor_construct_build_command(Constructor*);
+
+void constructor_analyze(Constructor*, BuildCommand*);
+
+
+void constructor_error(Constructor* con, Token token, const char* error_cstr);
+
+SymbolValue constructor_evaluate(Constructor* con, Expression* e);
+SymbolValue constructor_execute (Constructor* con, Statement*  s);
+
+SymbolValue constructor_lookup_variable(Constructor* con, StringView sv, Expression* e);
+
+SymbolValue constructor_interpret_block       (Constructor* con, StatementBlock*  s);
+SymbolValue constructor_interpret_call        (Constructor* con, ExpressionCall*  e);
+SymbolValue constructor_interpret_chain       (Constructor* con, ExpressionChain* e);
+SymbolValue constructor_interpret_description (Constructor* con, StatementDescription* s);
+SymbolValue constructor_interpret_method_build(Constructor* con, ExpressionCall* e);
+
+void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc);
+
+
+
+#include <signal.h>
+
+static const SymbolValue nill = { .type = SYMBOL_VALUE_NIL };
+
+Constructor constructor_new(Statement* root_statement) {
+	Constructor con = {0};
+	con.current_statement = root_statement;
+	con.current_environment = environment_new(&con.arena);
+	con.current_build_command = build_command_new(&con.arena);
+	return con;
+}
+
+BuildCommand* constructor_construct_build_command(Constructor* con) {
+	Statement* root = con->current_statement;
+	con->current_build_command->body = root;
+
+	constructor_execute(con, root);
+	constructor_expand_build_command_targets(con, con->current_build_command);
+	constructor_analyze(con, con->current_build_command);
+	con->current_build_command->dirty = true; // root build command is always dirty
+	return con->current_build_command;
+}
+
+
+void constructor_analyze(Constructor* con, BuildCommand* bc) {
+	build_command_mark_all_children_dirty(bc);
+}
+
+void constructor_error(Constructor* con, Token token, const char* error_cstr) {
+	con->had_error = true;
+	fprintf(stderr,"[ERROR][constructor] %zu:%zu %s\n\t%s %.*s\n",
+		 token.line + 1, token.column,
+		 error_cstr, token_name_cstr(token), (int)token.str.count, token.str.items);
+	raise(1);
+}
+
+
+
+SymbolValue constructor_evaluate(Constructor* con, Expression* e) {
+	if (!e) { return nill; }
+
+	switch (e->type) {
+		case EXPR_VARIABLE: return constructor_lookup_variable(con, e->variable.name.str, e);
+		case EXPR_CALL:     return constructor_interpret_call(con, &e->call);
+		case EXPR_CHAIN:    return constructor_interpret_chain(con, &e->chain);
+		case EXPR_LITERAL_STRING: {
+			return (SymbolValue){
+				.type = SYMBOL_VALUE_STRING,
+				.string = e->literal_string.str,
+			};
+		}
+		default: break;
+	}
+	return nill;
+}
+
+SymbolValue constructor_execute(Constructor* con, Statement* s) {
+	con->current_statement = s;
+	switch (s->type) {
+		case STATEMENT_BLOCK:       return constructor_interpret_block(con, &s->block);
+		case STATEMENT_DESCRIPTION: return constructor_interpret_description(con, &s->description);
+		case STATEMENT_EXPRESSION:  return constructor_evaluate(con, s->expression.expression);
+	}
+	return nill;
+}
+
+SymbolValue constructor_interpret_block(Constructor* con, StatementBlock*  s) {
+	for (size_t i = 0; i < s->statement_count; ++i) {
+		constructor_execute(con, s->statements[i]);
+	}
+	return nill;
+}
+
+SymbolValue constructor_interpret_description(Constructor* con, StatementDescription* s) {
+	BuildCommand* enclosing = con->current_build_command;
+	Statement* outer = con->current_statement;
+
+	SymbolValue left = constructor_execute(con, s->statement);
+
+	if (left.type == SYMBOL_VALUE_BUILD_COMMAND) {
+		con->current_build_command = left.bc;
+		con->current_build_command->body = outer;
+	}
+
+	for (size_t i = 0; i < s->block->block.statement_count; ++i) {
+		constructor_execute(con, s->block->block.statements[i]);
+	}
+
+	con->current_build_command = enclosing;
+	return left;
+}
+
+SymbolValue constructor_interpret_chain(Constructor* con, ExpressionChain* e) {
+	Statement* outer = con->current_statement;
+	SymbolValue left = constructor_evaluate(con, e->left);
+	BuildCommand* enclosing = con->current_build_command;
+	if (left.type == SYMBOL_VALUE_BUILD_COMMAND) {
+		con->current_build_command = left.bc;
+		con->current_build_command->body = outer;
+	}
+	constructor_evaluate(con, e->right);
+	con->current_build_command = enclosing;
+	return left;
+}
+
+SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
+	SymbolValue callee = constructor_evaluate(con, e->callee);
+	Token callee_token = {
+		.type = TOKEN_IDENTIFIER,
+		.str.count = callee.string.count,
+		.str.items = callee.string.items,
+		.line = e->token.line,
+		.column = e->token.column,
+	};
+
+	if (callee.type == SYMBOL_VALUE_NIL) {
+		constructor_error(con, callee_token, "callee is nil");
+		return nill;
+	}
+	
+	if (callee.type != SYMBOL_VALUE_METHOD) {
+		constructor_error(con, callee_token, "callee is not a method");
+		return nill;
+	}
+
+	if (callee.method_type == METHOD_BUILD) {
+		return constructor_interpret_method_build(con, e);
+	} else if (callee.method_type == METHOD_INPUT) {
+		BuildCommand* bc = con->current_build_command;
+		for (size_t i = 0; i < e->argc; ++i) {
+			SymbolValue arg = constructor_evaluate(con, e->args[i]);
+			if (arg.type == SYMBOL_VALUE_STRING) {
+				da_append_arena(&con->arena, &bc->input_files, arg.string);
+			}
+		}
+	} else if (callee.method_type == METHOD_COMPILER) {
+		if (e->argc != 1) {
+			constructor_error(con, e->token, "compiler method takes only 1 argument");
+			return nill;
+		}
+		BuildCommand* bc = con->current_build_command;
+		SymbolValue arg = constructor_evaluate(con, e->args[0]);
+		bc->compiler = arg.string;
+	} else if (callee.method_type == METHOD_CFLAGS) {
+		BuildCommand* bc = con->current_build_command;
+		for (size_t i = 0; i < e->argc; ++i) {
+			SymbolValue arg = constructor_evaluate(con, e->args[i]);
+			if (arg.type == SYMBOL_VALUE_STRING) {
+				da_append_arena(&con->arena, &bc->cflags, arg.string);
+			}
+		}
+	} else if (callee.method_type == METHOD_LDFLAGS) {
+		BuildCommand* bc = con->current_build_command;
+		for (size_t i = 0; i < e->argc; ++i) {
+			SymbolValue arg = constructor_evaluate(con, e->args[i]);
+			if (arg.type == SYMBOL_VALUE_STRING) {
+				da_append_arena(&con->arena, &bc->ldflags, arg.string);
+			}
+		}
+	} else if (callee.method_type == METHOD_SOURCE_DIR) {
+		if (e->argc != 1) {
+			constructor_error(con, e->token, "source_dir method takes only 1 argument");
+			return nill;
+		}
+		BuildCommand* bc = con->current_build_command;
+		SymbolValue arg = constructor_evaluate(con, e->args[0]);
+		bc->source_dir = arg.string;
+	} else if (callee.method_type == METHOD_OUTPUT_DIR) {
+		if (e->argc != 1) {
+			constructor_error(con, e->token, "output_dir method takes only 1 argument");
+			return nill;
+		}
+		BuildCommand* bc = con->current_build_command;
+		SymbolValue arg = constructor_evaluate(con, e->args[0]);
+		bc->output_dir = arg.string;
+	} else if (callee.method_type == METHOD_INCLUDE_DIR) {
+		BuildCommand* bc = con->current_build_command;
+		for (size_t i = 0; i < e->argc; ++i) {
+			SymbolValue arg = constructor_evaluate(con, e->args[i]);
+			if (arg.type == SYMBOL_VALUE_STRING) {
+				da_append_arena(&con->arena, &bc->include_dirs, arg.string);
+			}
+		}
+	} else if (callee.method_type == METHOD_LIBRARY_DIR) {
+		BuildCommand* bc = con->current_build_command;
+		for (size_t i = 0; i < e->argc; ++i) {
+			SymbolValue arg = constructor_evaluate(con, e->args[i]);
+			if (arg.type == SYMBOL_VALUE_STRING) {
+				da_append_arena(&con->arena, &bc->library_dirs, arg.string);
+			}
+		}
+	} else if (callee.method_type == METHOD_LINK) {
+		BuildCommand* bc = con->current_build_command;
+		for (size_t i = 0; i < e->argc; ++i) {
+			SymbolValue arg = constructor_evaluate(con, e->args[i]);
+			if (arg.type == SYMBOL_VALUE_STRING) {
+				da_append_arena(&con->arena, &bc->library_links, arg.string);
+			}
+		}
+	} else if (callee.method_type == METHOD_DIRTY) {
+		BuildCommand* bc = con->current_build_command;
+		bc->dirty = true;
+		while (bc->parent) {
+			bc->parent->dirty = true;
+			bc = bc->parent;
+		}
+	}
+	return nill;
+}
+
+
+SymbolValue constructor_lookup_variable(Constructor* con, StringView sv, Expression* e) {
+	SymbolValue val = {0};
+	val.string.items = sv.items;
+	val.string.count = sv.count;
+	val.type = SYMBOL_VALUE_STRING;
+
+	MethodType m = method_extract(sv);
+	if (m != METHOD_NONE) {
+		val.type = SYMBOL_VALUE_METHOD;
+		val.method_type = m;
+	}
+
+	return val;
+}
+
+SymbolValue constructor_interpret_method_build(Constructor* con, ExpressionCall* e) {
+	Statement* outer = con->current_statement;
+	BuildCommand* enclosing = con->current_build_command;
+	BuildCommand* bc = build_command_inherit(&con->arena, con->current_build_command);
+	con->current_build_command = bc;
+	con->current_build_command->body = con->current_statement;
+
+	for (size_t i = 0; i < e->argc; ++i) {
+		SymbolValue arg = constructor_evaluate(con, e->args[i]);
+		if (arg.type == SYMBOL_VALUE_STRING) {
+			Target t = { .name = arg.string };
+			da_append_arena(&con->arena, &bc->targets, t);
+		}
+	}
+
+
+	con->current_build_command->body = outer;
+	con->current_build_command = enclosing;
+
+	return (SymbolValue){
+		.type = SYMBOL_VALUE_BUILD_COMMAND,
+		.bc = bc
+	};
+}
+
+// NOTE: we have to wait for all the descriptions to end to run this,
+// otherwise we might miss the compiler change
+void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc) {
+	for (size_t i = 0; i < bc->targets.count; ++i) {
+		Target* t = &bc->targets.items[i];
+
+		t->input_name.count = 0;
+		if (bc->source_dir.count > 0) {
+			da_append_many_arena(&con->arena, &t->input_name, bc->source_dir.items, bc->source_dir.count);
+			da_append_arena(&con->arena, &t->input_name, '/');
+		}
+		da_append_many_arena(&con->arena, &t->input_name, t->name.items, t->name.count);
+		if ((bc->compiler.count == 3 && strncmp(bc->compiler.items, "gcc", 3) == 0) ||
+			(bc->compiler.count == 5 && strncmp(bc->compiler.items, "clang", 5) == 0)
+		) {
+			da_append_many_arena(&con->arena, &t->input_name, ".c", 2);
+		} else if (bc->compiler.count == 3 && strncmp(bc->compiler.items, "g++", 3) == 0) {
+			da_append_many_arena(&con->arena, &t->input_name, ".cpp", 4);
+		}
+
+		t->output_name.count = 0;
+
+		if (bc->output_dir.count > 0) {
+			da_append_many_arena(&con->arena, &t->output_name, bc->output_dir.items, bc->output_dir.count);
+			da_append_arena(&con->arena, &t->output_name, '/');
+		}
+		da_append_many_arena(&con->arena, &t->output_name, t->name.items, t->name.count);
+		if (bc->build_type == BUILD_OBJECT) {
+			da_append_many_arena(&con->arena, &t->output_name, ".o", 2);
+		}
+
+		if (bc->parent) {
+			da_append_arena(&con->arena, &bc->parent->input_files, sv_from_sb(t->output_name));
+		}
+	}
+
+	for (size_t i = 0; i < bc->children.count; ++i) {
+		constructor_expand_build_command_targets(con, bc->children.items[i]);
+	}
+}
+
+
+
+
+
+
+
+
+typedef struct {
+	Arena arena;
 	int verbose;
+	bool had_error;
+	BuildCommand* root_build_command;
+	Environment* current_environment;
 } Interpreter;
 
-Environment* environment_new(Arena*);
-Interpreter interpreter_new(Parser*);
-
-void interpreter_interpret(Interpreter*);
-void interpreter_dry_run  (Interpreter*);
-
-BuildCommand* interpreter_interpret_build_command(Interpreter*);
+Interpreter interpreter_new(BuildCommand*);
+void interpreter_interpret (Interpreter*);
 
 void interpreter_error(Interpreter* in, Token token, const char* error_cstr);
 
@@ -1833,6 +2159,10 @@ void interpreter_expand_build_command_targets(Interpreter* in, BuildCommand* bc)
 
 
 
+void execute_build_command(BuildCommand* bc);
+
+
+
 
 #include <signal.h>
 #include <stdio.h>
@@ -1842,47 +2172,18 @@ void interpreter_expand_build_command_targets(Interpreter* in, BuildCommand* bc)
 static const SymbolValue nil = { .type = SYMBOL_VALUE_NIL };
 
 
-// TODO: define some constants
-// COOK_VERSION=0.0.1
-// GCC_VERSION (get it from gcc itself) ...
-// DEBUG/RELEASE/MIN_SIZE_REL/DIST
-Environment* environment_new(Arena* arena) {
-	Environment* env = (Environment*)arena_alloc(arena, sizeof(Environment));
-	return env;
-}
-
-Interpreter interpreter_new(Parser* p) {
-	Interpreter in = {
-		.parser = p,
-	};
+Interpreter interpreter_new(BuildCommand* bc) {
+	Interpreter in = {0};
+	in.root_build_command = bc;
 	in.current_environment = environment_new(&in.arena);
-	in.current_build_command = build_command_new(&in.arena);
 	return in;
 }
 
-
 void interpreter_interpret(Interpreter* in) {
-	BuildCommand* bc = interpreter_interpret_build_command(in);
-	build_command_execute(bc);
-}
+	assert(in->root_build_command && in->root_build_command->body && "root bc body must not be null");
 
-void interpreter_dry_run(Interpreter* in) {
-	BuildCommand* bc = interpreter_interpret_build_command(in);
-	if (in->verbose > 0) {
-		printf("[interpreter] build command pretty:\n");
-		build_command_print(bc, 0);
-		printf("[interpreter] build command dump:\n");
-	}
-	build_command_dump(bc, stdout);
-}
-
-BuildCommand* interpreter_interpret_build_command(Interpreter* in) {
-	StatementList sl = parser_parse_all(in->parser);
-	for (size_t i = 0; i < sl.count; ++i) {
-		interpreter_execute(in, sl.items[i]);
-	}
-	interpreter_expand_build_command_targets(in, in->current_build_command);
-	return in->current_build_command;
+	interpreter_execute(in, in->root_build_command->body);
+	execute_build_command(in->root_build_command);
 }
 
 void interpreter_error(Interpreter* in, Token token, const char* error_cstr) {
@@ -1913,53 +2214,52 @@ SymbolValue interpreter_evaluate(Interpreter* in, Expression* e) {
 	return (SymbolValue){0};
 }
 
-SymbolValue interpreter_execute(Interpreter* in, Statement* s) {
-	switch (s->type) {
-		case STATEMENT_BLOCK:       return interpret_block(in, &s->block);
-		case STATEMENT_DESCRIPTION: return interpret_description(in, &s->description);
-		case STATEMENT_EXPRESSION:  return interpreter_evaluate(in, s->expression.expression);
+BuildCommand* statement_find_attached_build_command(Statement* s, BuildCommand* bc) {
+	if (!bc || !s || !bc->body) return NULL;
+	if (bc->body == s)          return bc;
+	for (size_t i = 0; i < bc->children.count; ++i) {
+		BuildCommand* bcc = statement_find_attached_build_command(s, bc->children.items[i]);
+		if (bcc) return bcc;
 	}
+	return NULL;
+}
+
+SymbolValue interpreter_execute(Interpreter* in, Statement* s) {
+	BuildCommand* bc = statement_find_attached_build_command(s, in->root_build_command);
+	if (bc && !bc->dirty && bc->parent != NULL) return nil;
+	//if (bc != in->root_build_command) return nil;
+
+	switch (s->type) {
+		case STATEMENT_BLOCK:       interpret_block(in, &s->block); break;
+		case STATEMENT_DESCRIPTION: interpret_description(in, &s->description); break;
+		case STATEMENT_EXPRESSION:  interpreter_evaluate(in, s->expression.expression); break;
+	}
+
 	return nil;
 }
 
 SymbolValue interpret_block(Interpreter* in, StatementBlock*  s) {
-	assert(false);
+	for (size_t i = 0; i < s->statement_count; ++i) {
+		interpreter_execute(in, s->statements[i]);
+	}
 	return nil;
 }
 
 SymbolValue interpret_description(Interpreter* in, StatementDescription* s) {
-	BuildCommand* enclosing = in->current_build_command;
-
 	SymbolValue left = interpreter_execute(in, s->statement);
-
-	if (left.type == SYMBOL_VALUE_BUILD_COMMAND) {
-		in->current_build_command = left.bc;
-	}
 
 	for (size_t i = 0; i < s->block->block.statement_count; ++i) {
 		interpreter_execute(in, s->block->block.statements[i]);
 	}
 
-	in->current_build_command = enclosing;
 	return left;
 }
 
 SymbolValue interpret_chain(Interpreter* in, ExpressionChain* e) {
 	SymbolValue left = interpreter_evaluate(in, e->left);
-	BuildCommand* enclosing = in->current_build_command;
-	if (left.type == SYMBOL_VALUE_BUILD_COMMAND) {
-		in->current_build_command = left.bc;
-	}
 	interpreter_evaluate(in, e->right);
-	in->current_build_command = enclosing;
 	return left;
 }
-
-// NOTE: how do we know when to exit the current build command ?
-// desc     -> {   build()  .input() ... }
-// chain    -> {   build()  .input() ... }
-//             {   build()  .input() ... }
-// no chain -> { { build() } input() ... }
 
 SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 	SymbolValue callee = interpreter_evaluate(in, e->callee);
@@ -1981,83 +2281,13 @@ SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 		return nil;
 	}
 
-	// TODO: maybe arity check
-
-	// append it to the current build context
-	if (callee.method_type == METHOD_BUILD) {
-		return interpret_method_build(in, e);
-	} else if (callee.method_type == METHOD_INPUT) {
-		BuildCommand* bc = in->current_build_command;
-		for (size_t i = 0; i < e->argc; ++i) {
-			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
-			if (arg.type == SYMBOL_VALUE_STRING) {
-				da_append_arena(&in->arena, &bc->input_files, arg.string);
-			}
-		}
-	} else if (callee.method_type == METHOD_COMPILER) {
-		if (e->argc != 1) {
-			interpreter_error(in, e->token, "compiler method takes only 1 argument");
-			return nil;
-		}
-		BuildCommand* bc = in->current_build_command;
+	if (callee.method_type == METHOD_DIRTY) {
+		BuildCommand* bc = in->root_build_command;
+		bc->dirty = true;
+	}
+	if (callee.method_type == METHOD_ECHO) {
 		SymbolValue arg = interpreter_evaluate(in, e->args[0]);
-		bc->compiler = arg.string;
-	} else if (callee.method_type == METHOD_CFLAGS) {
-		BuildCommand* bc = in->current_build_command;
-		for (size_t i = 0; i < e->argc; ++i) {
-			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
-			if (arg.type == SYMBOL_VALUE_STRING) {
-				da_append_arena(&in->arena, &bc->cflags, arg.string);
-			}
-		}
-	} else if (callee.method_type == METHOD_LDFLAGS) {
-		BuildCommand* bc = in->current_build_command;
-		for (size_t i = 0; i < e->argc; ++i) {
-			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
-			if (arg.type == SYMBOL_VALUE_STRING) {
-				da_append_arena(&in->arena, &bc->ldflags, arg.string);
-			}
-		}
-	} else if (callee.method_type == METHOD_SOURCE_DIR) {
-		if (e->argc != 1) {
-			interpreter_error(in, e->token, "source_dir method takes only 1 argument");
-			return nil;
-		}
-		BuildCommand* bc = in->current_build_command;
-		SymbolValue arg = interpreter_evaluate(in, e->args[0]);
-		bc->source_dir = arg.string;
-	} else if (callee.method_type == METHOD_OUTPUT_DIR) {
-		if (e->argc != 1) {
-			interpreter_error(in, e->token, "output_dir method takes only 1 argument");
-			return nil;
-		}
-		BuildCommand* bc = in->current_build_command;
-		SymbolValue arg = interpreter_evaluate(in, e->args[0]);
-		bc->output_dir = arg.string;
-	} else if (callee.method_type == METHOD_INCLUDE_DIR) {
-		BuildCommand* bc = in->current_build_command;
-		for (size_t i = 0; i < e->argc; ++i) {
-			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
-			if (arg.type == SYMBOL_VALUE_STRING) {
-				da_append_arena(&in->arena, &bc->include_dirs, arg.string);
-			}
-		}
-	} else if (callee.method_type == METHOD_LIBRARY_DIR) {
-		BuildCommand* bc = in->current_build_command;
-		for (size_t i = 0; i < e->argc; ++i) {
-			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
-			if (arg.type == SYMBOL_VALUE_STRING) {
-				da_append_arena(&in->arena, &bc->library_dirs, arg.string);
-			}
-		}
-	} else if (callee.method_type == METHOD_LINK) {
-		BuildCommand* bc = in->current_build_command;
-		for (size_t i = 0; i < e->argc; ++i) {
-			SymbolValue arg = interpreter_evaluate(in, e->args[i]);
-			if (arg.type == SYMBOL_VALUE_STRING) {
-				da_append_arena(&in->arena, &bc->library_links, arg.string);
-			}
-		}
+		printf("%.*s\n",(int)arg.string.count, arg.string.items);
 	}
 	return nil;
 }
@@ -2069,90 +2299,28 @@ SymbolValue interpreter_lookup_variable(Interpreter* in, StringView sv, Expressi
 	val.string.count = sv.count;
 	val.type = SYMBOL_VALUE_STRING;
 
-	#define METHOD(name, enm)                         \
-		if (strncmp(name, sv.items, sv.count) == 0) { \
-			val.type = SYMBOL_VALUE_METHOD;           \
-			val.method_type = enm;                    \
-			return val; }
-
-	METHOD("build",       METHOD_BUILD);
-	METHOD("compiler",    METHOD_COMPILER);
-	METHOD("input",       METHOD_INPUT);
-	METHOD("cflags",      METHOD_CFLAGS);
-	METHOD("ldflags",     METHOD_LDFLAGS);
-	METHOD("source_dir",  METHOD_SOURCE_DIR);
-	METHOD("output_dir",  METHOD_OUTPUT_DIR);
-	METHOD("include_dir", METHOD_INCLUDE_DIR);
-	METHOD("library_dir", METHOD_LIBRARY_DIR);
-	METHOD("link",        METHOD_LINK);
+	MethodType m = method_extract(sv);
+	if (m != METHOD_NONE) {
+		val.type = SYMBOL_VALUE_METHOD;
+		val.method_type = m;
+	}
 
 	return val;
 }
 
-SymbolValue interpret_method_build(Interpreter* in, ExpressionCall* e) {
-	BuildCommand* enclosing = in->current_build_command;
-	BuildCommand* bc = build_command_inherit(&in->arena, in->current_build_command);
-	in->current_build_command = bc;
-
-	for (size_t i = 0; i < e->argc; ++i) {
-		SymbolValue arg = interpreter_evaluate(in, e->args[i]);
-		if (arg.type == SYMBOL_VALUE_STRING) {
-			Target t = { .name = arg.string };
-			da_append_arena(&in->arena, &bc->targets, t);
-		}
-	}
-
-	in->current_build_command = enclosing;
-
-	return (SymbolValue){
-		.type = SYMBOL_VALUE_BUILD_COMMAND,
-		.bc = bc
-	};
-}
-
-// NOTE: we have to wait for all the descriptions to end to run this,
-// otherwise we might miss the compiler change
-void interpreter_expand_build_command_targets(Interpreter* in, BuildCommand* bc) {
-	for (size_t i = 0; i < bc->targets.count; ++i) {
-		Target* t = &bc->targets.items[i];
-
-		t->input_name.count = 0;
-		if (bc->source_dir.count > 0) {
-			da_append_many_arena(&in->arena, &t->input_name, bc->source_dir.items, bc->source_dir.count);
-			da_append_arena(&in->arena, &t->input_name, '/');
-		}
-		da_append_many_arena(&in->arena, &t->input_name, t->name.items, t->name.count);
-		if ((bc->compiler.count == 3 && strncmp(bc->compiler.items, "gcc", 3) == 0) ||
-			(bc->compiler.count == 5 && strncmp(bc->compiler.items, "clang", 5) == 0)
-		) {
-			da_append_many_arena(&in->arena, &t->input_name, ".c", 2);
-		} else if (bc->compiler.count == 3 && strncmp(bc->compiler.items, "g++", 3) == 0) {
-			da_append_many_arena(&in->arena, &t->input_name, ".cpp", 4);
-		}
-
-		t->output_name.count = 0;
-
-		if (bc->output_dir.count > 0) {
-			da_append_many_arena(&in->arena, &t->output_name, bc->output_dir.items, bc->output_dir.count);
-			da_append_arena(&in->arena, &t->output_name, '/');
-		}
-		da_append_many_arena(&in->arena, &t->output_name, t->name.items, t->name.count);
-		if (bc->build_type == BUILD_OBJECT) {
-			da_append_many_arena(&in->arena, &t->output_name, ".o", 2);
-		}
-
-		if (bc->parent) {
-			da_append_arena(&in->arena, &bc->parent->input_files, sv_from_sb(t->output_name));
-		}
-	}
-
-	for (size_t i = 0; i < bc->children.count; ++i) {
-		interpreter_expand_build_command_targets(in, bc->children.items[i]);
-	}
-}
 
 
 #include <stdio.h>
+
+
+// TODO: define some constants
+// COOK_VERSION=0.0.1
+// GCC_VERSION (get it from gcc itself) ...
+// DEBUG/RELEASE/MIN_SIZE_REL/DIST
+Environment* environment_new(Arena* arena) {
+	Environment* env = (Environment*)arena_alloc(arena, sizeof(Environment));
+	return env;
+}
 
 const char* symbol_value_type_name_cstr(SymbolValueType type) {
 	switch (type) {
@@ -2179,20 +2347,35 @@ void symbol_value_print(SymbolValue value, int indent) {
 		case SYMBOL_VALUE_FLOAT:  printf("float: %f", value.floating); break;
 		case SYMBOL_VALUE_STRING: printf("string: %.*s", (int)value.string.count, value.string.items); break;
 		case SYMBOL_VALUE_METHOD: printf("method: %.*s", (int)value.string.count, value.string.items); break;
-		case SYMBOL_VALUE_BUILD_COMMAND: printf("build command:\n\t\t"); build_command_print(value.bc, indent + 2); break;
+		case SYMBOL_VALUE_BUILD_COMMAND:
+			printf("build command:\n\t\t");
+			build_command_print(value.bc, indent + 2);
+			break;
 		default: break;
 	}
 	printf("\n");
 }
 
+MethodType method_extract(StringView sv) {
+	if (strncmp("build",       sv.items, sv.count) == 0) return METHOD_BUILD;
+	if (strncmp("compiler",    sv.items, sv.count) == 0) return METHOD_COMPILER;
+	if (strncmp("input",       sv.items, sv.count) == 0) return METHOD_INPUT;
+	if (strncmp("cflags",      sv.items, sv.count) == 0) return METHOD_CFLAGS;
+	if (strncmp("ldflags",     sv.items, sv.count) == 0) return METHOD_LDFLAGS;
+	if (strncmp("source_dir",  sv.items, sv.count) == 0) return METHOD_SOURCE_DIR;
+	if (strncmp("output_dir",  sv.items, sv.count) == 0) return METHOD_OUTPUT_DIR;
+	if (strncmp("include_dir", sv.items, sv.count) == 0) return METHOD_INCLUDE_DIR;
+	if (strncmp("library_dir", sv.items, sv.count) == 0) return METHOD_LIBRARY_DIR;
+	if (strncmp("link",        sv.items, sv.count) == 0) return METHOD_LINK;
+	if (strncmp("dirty",       sv.items, sv.count) == 0) return METHOD_DIRTY;
+	if (strncmp("echo",        sv.items, sv.count) == 0) return METHOD_ECHO;
+
+	return METHOD_NONE;
+}
 
 
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
 
 #define INDENT_MULTIPLIER 4
-#define CMD_LINE_MAX 2000
 
 BuildCommand* build_command_new(Arena* arena) {
 	BuildCommand* bc = (BuildCommand*)arena_alloc(arena, sizeof(BuildCommand));
@@ -2200,7 +2383,7 @@ BuildCommand* build_command_new(Arena* arena) {
 	return bc;
 }
 
-BuildCommand build_command_default() {
+BuildCommand build_command_default(void) {
 	static const StringView gcc = { .items = "gcc", .count = 3 };
 
 	BuildCommand bc = {0};
@@ -2256,6 +2439,7 @@ inline static void target_list_print_big(int indent, const char* label, const Ta
 	for (size_t i = 0; i < list->count; ++i) {
 		const Target* sv = &list->items[i];
 		printf("%.*s", (int)sv->name.count, sv->name.items);
+		printf(":%.*s", (int)sv->output_name.count, sv->output_name.items);
 		if (i + 1 < list->count) {
 			printf(", ");
 		}
@@ -2272,6 +2456,8 @@ void build_command_print(BuildCommand* bc, size_t indent) {
 	indent_label(ni, "build command");
 	printf("\n");
 
+	indent_label(ni, "dirty");
+	printf("%b\n", bc->dirty);
 
 	if (bc->compiler.count > 0) {
 		indent_label(ni, "compiler");
@@ -2326,28 +2512,28 @@ inline static void string_list_print_flat(FILE* stream, const StringList* list, 
 	}
 }
 
-void build_command_dump(BuildCommand* bc, FILE* stream) {
-	if (!bc) {
+void build_command_dump(BuildCommand* bc, FILE* stream, size_t target_to_build) {
+	if (!bc || !bc->dirty) {
 		return;
 	}
 
 	// skip root bc
 	if (!bc->parent) {
 		for (size_t i = 0; i < bc->children.count; ++i) {
-			build_command_dump(bc->children.items[i], stream);
+			build_command_dump(bc->children.items[i], stream, 0);
 		}
 		return;
 	}
 
 	// recurse into children
 	for (size_t i = 0; i < bc->children.count; ++i) {
-		build_command_dump(bc->children.items[i], stream);
+		build_command_dump(bc->children.items[i], stream, 0);
 	}
 
 	if (bc->targets.count == 0) {
 		return;
 	}
-	if (bc->targets.count <= bc->target_to_build) {
+	if (bc->targets.count <= target_to_build) {
 		return;
 	}
 
@@ -2363,7 +2549,7 @@ void build_command_dump(BuildCommand* bc, FILE* stream) {
 	}
 
 	fprintf(stream, "-o ");
-	Target* t = &bc->targets.items[bc->target_to_build];
+	Target* t = &bc->targets.items[target_to_build];
 	print_stringview(stream, sv_from_sb(t->output_name));
 	print_stringview(stream, sv_from_sb(t->input_name));
 
@@ -2375,14 +2561,111 @@ void build_command_dump(BuildCommand* bc, FILE* stream) {
 
 	fprintf(stream, "\n");
 
-	if (bc->target_to_build == 0) {
+	if (target_to_build == 0) {
 		for (size_t i = 1; i < bc->targets.count; ++i) {
-			bc->target_to_build = i;
-			build_command_dump(bc, stream);
+			build_command_dump(bc, stream, i);
 		}
 	}
 }
 
+void build_type_print(BuildType type) {
+	switch (type) {
+		case BUILD_EXECUTABLE: printf("executable"); return;
+		case BUILD_OBJECT:     printf("object");     return;
+		case BUILD_LIB:        printf("lib");        return;
+	}
+}
+
+void build_command_mark_all_children_dirty(BuildCommand* bc) {
+	if (!bc) { return; }
+	bc->dirty = true;
+	for (size_t i = 0; i < bc->children.count; ++i) {
+		build_command_mark_all_children_dirty(bc->children.items[i]);
+	}
+}
+
+
+
+#include <stdbool.h>
+
+typedef struct CookOptions {
+	StringView source;
+	bool dry_run;
+	int verbose;
+} CookOptions;
+
+static inline CookOptions cook_options_default(void) {
+	return (CookOptions){
+		.dry_run = false,
+		.verbose = 0,
+	};
+}
+
+int cook(CookOptions op);
+
+
+
+
+
+
+
+
+
+
+int cook(CookOptions op) {
+	Lexer lexer = lexer_new(op.source);
+
+	if (op.verbose > 3) {
+		printf("[file] dump:\n");
+		printf("%.*s\n", (int)op.source.count, op.source.items);
+	}
+	if (op.verbose > 2) {
+		printf("[lexer] dump:\n");
+		lexer_dump(&lexer);
+	}
+
+	Parser parser = parser_new(&lexer);
+	Statement* root_statement = parser_parse_all(&parser);
+
+	if (op.verbose > 1) {
+		printf("[parser] dump:\n");
+		statement_print(root_statement, 1);
+	}
+
+	Constructor constructor = constructor_new(root_statement);
+	BuildCommand* root_build_command = constructor_construct_build_command(&constructor);
+
+	if (op.verbose > 0) {
+		printf("[cook] build command pretty:\n");
+		build_command_print(root_build_command, 0);
+	}
+
+
+	if (op.dry_run) {
+		if (op.verbose > 0) {
+			printf("[cook] build command dump:\n");
+		}
+		build_command_mark_all_children_dirty(root_build_command);
+		build_command_dump(root_build_command, stdout, 0);
+	} else {
+		Interpreter interpreter = interpreter_new(root_build_command);
+		interpreter_interpret(&interpreter);
+		arena_free(&interpreter.arena);
+	}
+
+	arena_free(&parser.arena);
+	arena_free(&constructor.arena);
+	return 0;
+}
+
+
+
+
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+
+#define CMD_LINE_MAX 2000
 
 static inline int execute_line(const char* line) {
 #ifdef _WIN32
@@ -2395,7 +2678,11 @@ static inline int execute_line(const char* line) {
 }
 
 
-void build_command_execute(BuildCommand* bc) {
+void execute_build_command(BuildCommand* bc) {
+	if (!bc || !bc->dirty) {
+		return;
+	}
+
 	// create output dir
 	{
 		StringBuilder sb = {0};
@@ -2413,7 +2700,7 @@ void build_command_execute(BuildCommand* bc) {
 		exit(1);
 	}
 
-	build_command_dump(bc, script);
+	build_command_dump(bc, script, 0);
 
 	rewind(script);
 	char line[CMD_LINE_MAX];
@@ -2422,7 +2709,7 @@ void build_command_execute(BuildCommand* bc) {
 		while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
 			line[--len] = '\0';
 		}
-		printf("> %.*s\n", (int)len, line);
+		printf("$ %.*s\n", (int)len, line);
 		int ret = execute_line(line);
 		if (ret != 0) {
 			break;
@@ -2431,62 +2718,6 @@ void build_command_execute(BuildCommand* bc) {
 
 	fclose(script);
 }
-
-void build_type_print(BuildType type) {
-	switch (type) {
-		case BUILD_EXECUTABLE: printf("executable"); return;
-		case BUILD_OBJECT:     printf("object");     return;
-		case BUILD_LIB:        printf("lib");        return;
-	}
-}
-
-
-
-#include <stdbool.h>
-
-typedef struct CookOptions {
-	StringView source;
-	bool dry_run;
-	int verbose;
-} CookOptions;
-
-static inline CookOptions cook_options_default() {
-	return (CookOptions){
-		.dry_run = false,
-		.verbose = 0,
-	};
-}
-
-int cook(CookOptions op);
-
-
-
-
-
-int cook(CookOptions op) {
-	Lexer lexer = lexer_new(op.source);
-	if (op.verbose > 2) {
-		printf("[lexer] dump:\n");
-		lexer_dump(&lexer);
-	}
-	Parser parser = parser_new(&lexer);
-	if (op.verbose > 1) {
-		printf("[parser] dump:\n");
-		parser_dump(&parser);
-	}
-	Interpreter interpreter = interpreter_new(&parser);
-
-	interpreter.verbose = op.verbose;
-
-	if (op.dry_run) {
-		interpreter_dry_run(&interpreter);
-	} else {
-		interpreter_interpret(&interpreter);
-	}
-
-	return 0;
-}
-
 
 
 #include <stdio.h>
@@ -2510,6 +2741,17 @@ void print_usage(const char* pname) {
 
 int main(int argc, char** argv) {
 	CookOptions op = cook_options_default();
+
+	if (0) {
+		printf("DEBUGGING MODE");
+		StringBuilder source = {0};
+		if (access("../Cookfile", F_OK) == 0 && read_entire_file("../Cookfile", &source)) {
+
+			op.source = sv_from_sb(source);
+			cook(op);
+		}
+		return 0;
+	}
 
 	const char* pname = shift(argv, argc);
 	const char* filepath = NULL;

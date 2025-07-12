@@ -19,23 +19,23 @@ $ ./cook
 
 ### minimal:
 ```py
-    build(main)
-    # runs:
-    # cc -o main main.c
+build(main)
+# runs:
+# cc -o main main.c
 ```
 
 <br>
 
 ### chaining and nesting:
 ```py
-    build(foo).build(bar)
-    # is the same as:
-    build(foo) {
-        build(bar)
-    }
-    # runs:
-    # cc -c -o bar.o bar.c
-    # cc -o foo foo.c bar.o
+build(foo).build(bar)
+# is the same as:
+build(foo) {
+    build(bar)
+}
+# runs:
+# cc -c -o bar.o bar.c
+# cc -o foo foo.c bar.o
 ```
 
 <br>
@@ -45,12 +45,12 @@ when you write a `build()`, it inherits the parent build command's settings.
 
 example:
 ```py
-    build(foo).cflags(-Wall, -Wextra)
-    build(bar).cflags(-Wall, -Wextra)
-    # is the same as:
-    cflags(-Wall, -Wextra)
-    build(foo)
-    build(bar)
+build(foo).cflags(-Wall, -Wextra)
+build(bar).cflags(-Wall, -Wextra)
+# is the same as:
+cflags(-Wall, -Wextra)
+build(foo)
+build(bar)
 ```
 
 both `foo` and `bar` are built with the same flags.

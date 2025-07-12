@@ -9,13 +9,13 @@ typedef struct {
 	Token current;
 	Token next;
 	Token previous;
-	bool had_error;
 	Arena arena;
+	bool had_error;
 } Parser;
 
 Parser parser_new(Lexer* lexer);
 
-StatementList parser_parse_all(Parser* p);
+Statement* parser_parse_all(Parser* p);
 
 void parser_error_at_token(Parser* p, Token token, const char* error_cstr);
 

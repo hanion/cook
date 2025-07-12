@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "arena.h"
 #include "da.h"
 #include "expression.h"
 #include "lexer.h"
@@ -356,7 +357,7 @@ float parse_literal_float(const char* str, size_t len) {
 
 
 
-StatementList parser_parse_all(Parser* p) {
+Statement* parser_parse_all(Parser* p) {
 	StatementList statement_list = statement_list_new();
 
 	while (!parser_is_at_end(p)) {
@@ -364,7 +365,12 @@ StatementList parser_parse_all(Parser* p) {
 		da_append_arena(&p->arena, &statement_list, s);
 	}
 
-	return statement_list;
+	Statement* root = parser_arena_alloc_statement(p);
+	root->block.statement_count = statement_list.count;
+	root->block.statements = statement_list.items;
+	root->type = STATEMENT_BLOCK;
+
+	return root;
 }
 
 Statement* parse_declaration(Parser* p) {
@@ -419,15 +425,7 @@ void parser_dump(Parser* p) {
 	Lexer  copy_lexer  = *p->lexer;
 	copy_parser.lexer = &copy_lexer;
 
-// 	Expression* e = parse_expression(&copy_parser);
-// 	while (e != NULL) {
-// 		expression_print(e, 0);
-// 		e = parse_expression(&copy_parser);
-// 	}
-
-	StatementList sl = parser_parse_all(&copy_parser);
-	for (size_t i = 0; i < sl.count; ++i) {
-		Statement* s = sl.items[i];
-		statement_print(s, 1);
-	}
+	Statement* root = parser_parse_all(&copy_parser);
+	statement_print(root, 1);
+	arena_free(&copy_parser.arena);
 }

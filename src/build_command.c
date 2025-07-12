@@ -1,12 +1,7 @@
 #include "build_command.h"
 #include "da.h"
-#include "file.h"
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
 
 #define INDENT_MULTIPLIER 4
-#define CMD_LINE_MAX 2000
 
 BuildCommand* build_command_new(Arena* arena) {
 	BuildCommand* bc = (BuildCommand*)arena_alloc(arena, sizeof(BuildCommand));
@@ -87,6 +82,8 @@ void build_command_print(BuildCommand* bc, size_t indent) {
 	indent_label(ni, "build command");
 	printf("\n");
 
+	indent_label(ni, "dirty");
+	printf("%b\n", bc->dirty);
 
 	if (bc->compiler.count > 0) {
 		indent_label(ni, "compiler");
@@ -142,7 +139,7 @@ inline static void string_list_print_flat(FILE* stream, const StringList* list, 
 }
 
 void build_command_dump(BuildCommand* bc, FILE* stream, size_t target_to_build) {
-	if (!bc) {
+	if (!bc || !bc->dirty) {
 		return;
 	}
 
@@ -197,59 +194,18 @@ void build_command_dump(BuildCommand* bc, FILE* stream, size_t target_to_build) 
 	}
 }
 
-
-static inline int execute_line(const char* line) {
-#ifdef _WIN32
-		char full_command[CMD_LINE_MAX + 16];
-		snprintf(full_command, sizeof(full_command), "cmd /C \"%s\"", line);
-		return system(full_command);
-#else
-	return system(line);
-#endif
-}
-
-
-void build_command_execute(BuildCommand* bc) {
-	// create output dir
-	{
-		StringBuilder sb = {0};
-		da_append_many(&sb, bc->output_dir.items, bc->output_dir.count);
-		da_append(&sb,'\0');
-		if (access(sb.items, F_OK) != 0) {
-			MKDIR(sb.items);
-		}
-		free(sb.items);
-	}
-
-	FILE* script = tmpfile();
-	if (!script) {
-		perror("tmpfile");
-		exit(1);
-	}
-
-	build_command_dump(bc, script, 0);
-
-	rewind(script);
-	char line[CMD_LINE_MAX];
-	while (fgets(line, sizeof(line), script)) {
-		size_t len = strlen(line);
-		while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
-			line[--len] = '\0';
-		}
-		printf("$ %.*s\n", (int)len, line);
-		int ret = execute_line(line);
-		if (ret != 0) {
-			break;
-		}
-	}
-
-	fclose(script);
-}
-
 void build_type_print(BuildType type) {
 	switch (type) {
 		case BUILD_EXECUTABLE: printf("executable"); return;
 		case BUILD_OBJECT:     printf("object");     return;
 		case BUILD_LIB:        printf("lib");        return;
+	}
+}
+
+void build_command_mark_all_children_dirty(BuildCommand* bc) {
+	if (!bc) { return; }
+	bc->dirty = true;
+	for (size_t i = 0; i < bc->children.count; ++i) {
+		build_command_mark_all_children_dirty(bc->children.items[i]);
 	}
 }

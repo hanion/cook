@@ -29,7 +29,7 @@ void statement_print(Statement* s, int indent) {
 		putchar(' ');
 	}
 
-	printf("%s\n", statement_name_cstr(s->type));
+	printf("%s  %p\n", statement_name_cstr(s->type), (void*)s);
 
 	switch (s->type) {
 		case STATEMENT_EXPRESSION:

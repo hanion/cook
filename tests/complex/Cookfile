@@ -1,8 +1,12 @@
+compiler(g++)
+cflags(-Wall, -Wextra, -Werror, -g)
+source_dir(src)
+output_dir(build)
+include_dir(include, imgui, libs/glfw/include, libs/glew/include, libs/glm)
+library_dir(libs/glfw/lib, libs/glew/lib)
+
 build(game) {
-	compiler(g++).cflags(-Wall, -Wextra, -Werror, -g)
-	include_dir(include, imgui, libs/glfw/include, libs/glew/include, libs/glm)
-	library_dir(libs/glfw/lib, libs/glew/lib).link(glfw, GLEW, GL, dl, pthread)
-	source_dir(src).output_dir(build)
+	link(glfw, GLEW, GL, dl, pthread)
 	build(main, input, window, renderer, imgui)
 }
 

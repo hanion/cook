@@ -1,6 +1,7 @@
 #pragma once
 #include "arena.h"
 #include "da.h"
+#include "statement.h"
 #include "symbol.h"
 #include <stdio.h>
 
@@ -56,16 +57,20 @@ struct BuildCommand {
 
 	StringView source_dir;
 	StringView output_dir;
+	Statement* body;
+	bool dirty;
 };
 
 BuildCommand* build_command_new(Arena*);
 
 BuildCommand build_command_default(void);
 void         build_command_print  (BuildCommand* bc, size_t indent);
-void         build_command_execute(BuildCommand* bc);
 void         build_command_dump   (BuildCommand* bc, FILE* stream, size_t target_to_build);
 
 BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent);
 
 void build_type_print(BuildType type);
+
+void build_command_mark_all_children_dirty(BuildCommand* bc);
+
 
