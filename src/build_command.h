@@ -59,6 +59,7 @@ struct BuildCommand {
 	StringView output_dir;
 	Statement* body;
 	bool dirty;
+	bool marked_clean_explicitly;
 };
 
 BuildCommand* build_command_new(Arena*);

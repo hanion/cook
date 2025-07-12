@@ -58,6 +58,7 @@ MethodType method_extract(StringView sv) {
 	if (strncmp("library_dir", sv.items, sv.count) == 0) return METHOD_LIBRARY_DIR;
 	if (strncmp("link",        sv.items, sv.count) == 0) return METHOD_LINK;
 	if (strncmp("dirty",       sv.items, sv.count) == 0) return METHOD_DIRTY;
+	if (strncmp("mark_clean",  sv.items, sv.count) == 0) return METHOD_MARK_CLEAN;
 	if (strncmp("echo",        sv.items, sv.count) == 0) return METHOD_ECHO;
 
 	return METHOD_NONE;

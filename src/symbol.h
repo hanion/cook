@@ -24,6 +24,7 @@ typedef enum MethodType {
 	METHOD_LIBRARY_DIR,
 	METHOD_LINK,
 	METHOD_DIRTY,
+	METHOD_MARK_CLEAN,
 	METHOD_ECHO,
 } MethodType;
 

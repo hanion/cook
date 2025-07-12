@@ -122,10 +122,6 @@ SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 		return nil;
 	}
 
-	if (callee.method_type == METHOD_DIRTY) {
-		BuildCommand* bc = in->root_build_command;
-		bc->dirty = true;
-	}
 	if (callee.method_type == METHOD_ECHO) {
 		SymbolValue arg = interpreter_evaluate(in, e->args[0]);
 		printf("%.*s\n",(int)arg.string.count, arg.string.items);

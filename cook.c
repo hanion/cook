@@ -1674,6 +1674,7 @@ typedef enum MethodType {
 	METHOD_LIBRARY_DIR,
 	METHOD_LINK,
 	METHOD_DIRTY,
+	METHOD_MARK_CLEAN,
 	METHOD_ECHO,
 } MethodType;
 
@@ -1774,11 +1775,9 @@ struct BuildCommand {
 	StringView source_dir;
 	StringView output_dir;
 
-	// StringList defines;
-
-	// NOTE: needed for the second pass
 	Statement* body;
 	bool dirty;
+	bool marked_clean_explicitly;
 };
 
 BuildCommand* build_command_new(Arena*);
@@ -2034,6 +2033,8 @@ SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
 			bc->parent->dirty = true;
 			bc = bc->parent;
 		}
+	} else if (callee.method_type == METHOD_MARK_CLEAN) {
+		con->current_build_command->marked_clean_explicitly = true;
 	}
 	return nill;
 }
@@ -2281,10 +2282,6 @@ SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 		return nil;
 	}
 
-	if (callee.method_type == METHOD_DIRTY) {
-		BuildCommand* bc = in->root_build_command;
-		bc->dirty = true;
-	}
 	if (callee.method_type == METHOD_ECHO) {
 		SymbolValue arg = interpreter_evaluate(in, e->args[0]);
 		printf("%.*s\n",(int)arg.string.count, arg.string.items);
@@ -2368,6 +2365,7 @@ MethodType method_extract(StringView sv) {
 	if (strncmp("library_dir", sv.items, sv.count) == 0) return METHOD_LIBRARY_DIR;
 	if (strncmp("link",        sv.items, sv.count) == 0) return METHOD_LINK;
 	if (strncmp("dirty",       sv.items, sv.count) == 0) return METHOD_DIRTY;
+	if (strncmp("mark_clean",  sv.items, sv.count) == 0) return METHOD_MARK_CLEAN;
 	if (strncmp("echo",        sv.items, sv.count) == 0) return METHOD_ECHO;
 
 	return METHOD_NONE;
@@ -2577,7 +2575,7 @@ void build_type_print(BuildType type) {
 }
 
 void build_command_mark_all_children_dirty(BuildCommand* bc) {
-	if (!bc) { return; }
+	if (!bc || bc->marked_clean_explicitly) return;
 	bc->dirty = true;
 	for (size_t i = 0; i < bc->children.count; ++i) {
 		build_command_mark_all_children_dirty(bc->children.items[i]);

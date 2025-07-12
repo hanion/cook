@@ -203,7 +203,7 @@ void build_type_print(BuildType type) {
 }
 
 void build_command_mark_all_children_dirty(BuildCommand* bc) {
-	if (!bc) { return; }
+	if (!bc || bc->marked_clean_explicitly) return;
 	bc->dirty = true;
 	for (size_t i = 0; i < bc->children.count; ++i) {
 		build_command_mark_all_children_dirty(bc->children.items[i]);

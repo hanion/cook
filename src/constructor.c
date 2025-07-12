@@ -207,6 +207,8 @@ SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
 			bc->parent->dirty = true;
 			bc = bc->parent;
 		}
+	} else if (callee.method_type == METHOD_MARK_CLEAN) {
+		con->current_build_command->marked_clean_explicitly = true;
 	}
 	return nill;
 }
