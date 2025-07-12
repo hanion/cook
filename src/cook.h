@@ -5,14 +5,16 @@
 
 typedef struct CookOptions {
 	StringView source;
-	bool dry_run;
 	int verbose;
+	bool dry_run;
+	bool build_all;
 } CookOptions;
 
 static inline CookOptions cook_options_default(void) {
 	return (CookOptions){
-		.dry_run = false,
 		.verbose = 0,
+		.dry_run = false,
+		.build_all = false,
 	};
 }
 

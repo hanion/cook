@@ -4,7 +4,6 @@
 #include "lexer.h"
 #include "parser.h"
 #include "interpreter.h"
-#include "executer.h"
 
 
 int cook(CookOptions op) {
@@ -29,6 +28,10 @@ int cook(CookOptions op) {
 
 	Constructor constructor = constructor_new(root_statement);
 	BuildCommand* root_build_command = constructor_construct_build_command(&constructor);
+
+	if (op.build_all) {
+		build_command_mark_all_children_dirty(root_build_command);
+	}
 
 	if (op.verbose > 0) {
 		printf("[cook] build command pretty:\n");

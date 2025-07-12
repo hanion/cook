@@ -11,6 +11,7 @@ void print_usage(const char* pname) {
 		"options:\n"
 		"  -h, --help      show this help message\n"
 		"  -f <file>       use specified cookfile\n"
+		"  -B              unconditionally build all\n"
 		"  --verbose       verbose printing\n"
 		"  --dry-run       show the commands that would be run, but don't execute them\n",
 		pname
@@ -38,6 +39,8 @@ int main(int argc, char** argv) {
 				return 1;
 			}
 			filepath = shift(argv, argc);
+		} else if (strcmp(arg, "-B") == 0) {
+			op.build_all = true;
 		} else if (strcmp(arg, "--dry-run") == 0) {
 			op.dry_run = true;
 		} else if (strncmp(arg, "--verbose=", 10) == 0) {

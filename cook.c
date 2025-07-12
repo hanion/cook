@@ -2588,19 +2588,20 @@ void build_command_mark_all_children_dirty(BuildCommand* bc) {
 
 typedef struct CookOptions {
 	StringView source;
-	bool dry_run;
 	int verbose;
+	bool dry_run;
+	bool build_all;
 } CookOptions;
 
 static inline CookOptions cook_options_default(void) {
 	return (CookOptions){
-		.dry_run = false,
 		.verbose = 0,
+		.dry_run = false,
+		.build_all = false,
 	};
 }
 
 int cook(CookOptions op);
-
 
 
 
@@ -2632,6 +2633,10 @@ int cook(CookOptions op) {
 
 	Constructor constructor = constructor_new(root_statement);
 	BuildCommand* root_build_command = constructor_construct_build_command(&constructor);
+
+	if (op.build_all) {
+		build_command_mark_all_children_dirty(root_build_command);
+	}
 
 	if (op.verbose > 0) {
 		printf("[cook] build command pretty:\n");
@@ -2729,6 +2734,7 @@ void print_usage(const char* pname) {
 		"options:\n"
 		"  -h, --help      show this help message\n"
 		"  -f <file>       use specified cookfile\n"
+		"  -B              unconditionally build all\n"
 		"  --verbose       verbose printing\n"
 		"  --dry-run       show the commands that would be run, but don't execute them\n",
 		pname
@@ -2767,6 +2773,8 @@ int main(int argc, char** argv) {
 				return 1;
 			}
 			filepath = shift(argv, argc);
+		} else if (strcmp(arg, "-B") == 0) {
+			op.build_all = true;
 		} else if (strcmp(arg, "--dry-run") == 0) {
 			op.dry_run = true;
 		} else if (strncmp(arg, "--verbose=", 10) == 0) {
