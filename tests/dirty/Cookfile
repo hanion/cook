@@ -1,0 +1,15 @@
+echo("root")
+
+build(foo) {
+	echo("foo")
+
+	build(bar) {
+		echo("bar")
+		mark_clean()
+	}
+
+	build(baz) {
+		echo("baz")
+		dirty()
+	}
+}

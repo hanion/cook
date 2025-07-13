@@ -91,7 +91,7 @@ Token lexer_next_token(Lexer* l) {
 			token.str.count++;
 		}
 
-		TokenType keyword = token_lookup_keyword(token);
+		TokenKind keyword = token_lookup_keyword(token);
 		if (keyword != TOKEN_INVALID) {
 			token.type = keyword;
 		}

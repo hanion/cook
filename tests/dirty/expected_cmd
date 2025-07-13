@@ -1,0 +1,6 @@
+root
+foo
+baz
+gcc -c -o baz.o baz.c 
+gcc -o foo foo.c bar.o baz.o
+

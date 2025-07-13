@@ -12,6 +12,7 @@ static const char* tests[] = {
 	"multiple_build",
 	"nested",
 	"multiple_target_names",
+	"dirty",
 };
 
 

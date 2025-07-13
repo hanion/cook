@@ -52,11 +52,11 @@ typedef enum {
 	TOKEN_KEYWORD_DEFAULT,
 	TOKEN_KEYWORD_TRUE,
 	TOKEN_KEYWORD_FALSE
-} TokenType;
+} TokenKind;
 
 
 typedef struct {
-	TokenType type;
+	TokenKind type;
 	StringView str;
 	size_t line;
 	size_t column;
@@ -64,8 +64,8 @@ typedef struct {
 
 
 const char* token_name_cstr(Token token);
-const char* token_type_name_cstr(TokenType tt);
-TokenType token_lookup_keyword(const Token token);
+const char* token_type_name_cstr(TokenKind tt);
+TokenKind token_lookup_keyword(const Token token);
 
 bool token_is_integer     (char c);
 bool token_is_symbol_start(char c);

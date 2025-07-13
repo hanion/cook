@@ -1,7 +1,10 @@
 #include "constructor.h"
+#include "da.h"
+#include "executer.h"
 #include "statement.h"
 #include "symbol.h"
 #include <signal.h>
+#include <stdint.h>
 
 static const SymbolValue nill = { .type = SYMBOL_VALUE_NIL };
 
@@ -26,7 +29,45 @@ BuildCommand* constructor_construct_build_command(Constructor* con) {
 
 
 void constructor_analyze(Constructor* con, BuildCommand* bc) {
-	build_command_mark_all_children_dirty(bc);
+	if (!con || !bc) return;
+
+	bool dirty_child = false;
+	for (size_t i = 0; i < bc->children.count; ++i) {
+		constructor_analyze(con, bc->children.items[i]);
+		if (bc->children.items[i]->dirty) {
+			dirty_child = true;
+		}
+	}
+	if (dirty_child) {
+		bc->dirty = true;
+		return;
+	}
+
+	uint64_t oldest_target_time = INT64_MAX;
+	for (size_t i = 0; i < bc->targets.count; ++i) {
+		uint64_t t = get_modification_time_sv(sv_from_sb(bc->targets.items[i].output_name));
+		if (t != 0 && t < oldest_target_time) {
+			oldest_target_time = t;
+		}
+	}
+
+	uint64_t newest_input_time = 0;
+	for (size_t i = 0; i < bc->input_files.count; ++i) {
+		uint64_t t = get_modification_time_sv(bc->input_files.items[i]);
+		if (t != 0 && t > newest_input_time) {
+			newest_input_time = t;
+		}
+	}
+	for (size_t i = 0; i < bc->targets.count; ++i) {
+		uint64_t t = get_modification_time_sv(sv_from_sb(bc->targets.items[i].input_name));
+		if (t != 0 && t > newest_input_time) {
+			newest_input_time = t;
+		}
+	}
+
+	if (oldest_target_time < newest_input_time) {
+		bc->dirty = true;
+	}
 }
 
 void constructor_error(Constructor* con, Token token, const char* error_cstr) {

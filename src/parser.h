@@ -24,10 +24,10 @@ Statement*  parser_arena_alloc_statement (Parser* p);
 
 bool  parser_is_at_end (Parser* p);
 Token parser_advance   (Parser* p);
-bool  parser_check     (Parser* p, TokenType type);
-bool  parser_check_next(Parser* p, TokenType type);
-bool  parser_match     (Parser* p, TokenType type);
-Token parser_consume   (Parser* p, TokenType type, const char* err_cstr);
+bool  parser_check     (Parser* p, TokenKind type);
+bool  parser_check_next(Parser* p, TokenKind type);
+bool  parser_match     (Parser* p, TokenKind type);
+Token parser_consume   (Parser* p, TokenKind type, const char* err_cstr);
 
 Expression* parse_expression (Parser* p);
 Expression* parse_assignment (Parser* p);

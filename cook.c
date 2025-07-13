@@ -335,11 +335,11 @@ typedef enum {
 	TOKEN_KEYWORD_DEFAULT,
 	TOKEN_KEYWORD_TRUE,
 	TOKEN_KEYWORD_FALSE
-} TokenType;
+} TokenKind;
 
 
 typedef struct {
-	TokenType type;
+	TokenKind type;
 	StringView str;
 	size_t line;
 	size_t column;
@@ -347,8 +347,8 @@ typedef struct {
 
 
 const char* token_name_cstr(Token token);
-const char* token_type_name_cstr(TokenType tt);
-TokenType token_lookup_keyword(const Token token);
+const char* token_type_name_cstr(TokenKind tt);
+TokenKind token_lookup_keyword(const Token token);
 
 bool token_is_integer     (char c);
 bool token_is_symbol_start(char c);
@@ -367,7 +367,7 @@ const char* token_name_cstr(Token token) {
 }
 
 
-const char* token_type_name_cstr(TokenType tt) {
+const char* token_type_name_cstr(TokenKind tt) {
 	switch (tt) {
 		#define CASE(T) case T: return #T;
 		case TOKEN_INVALID: return "!!! TOKEN_INVALID";
@@ -421,7 +421,7 @@ const char* token_type_name_cstr(TokenType tt) {
 	return "!!! TOKEN INVALID";
 }
 
-TokenType token_lookup_keyword(const Token token) {
+TokenKind token_lookup_keyword(const Token token) {
 	#define KW(k,l) (token.str.count == l && 0 == strncmp(k, token.str.items, l))
 	if (KW("if", 2))       { return TOKEN_KEYWORD_IF; }
 	if (KW("else", 4))     { return TOKEN_KEYWORD_ELSE; }
@@ -585,7 +585,7 @@ Token lexer_next_token(Lexer* l) {
 			token.str.count++;
 		}
 
-		TokenType keyword = token_lookup_keyword(token);
+		TokenKind keyword = token_lookup_keyword(token);
 		if (keyword != TOKEN_INVALID) {
 			token.type = keyword;
 		}
@@ -1047,10 +1047,10 @@ Statement*  parser_arena_alloc_statement (Parser* p);
 
 bool  parser_is_at_end (Parser* p);
 Token parser_advance   (Parser* p);
-bool  parser_check     (Parser* p, TokenType type);
-bool  parser_check_next(Parser* p, TokenType type);
-bool  parser_match     (Parser* p, TokenType type);
-Token parser_consume   (Parser* p, TokenType type, const char* err_cstr);
+bool  parser_check     (Parser* p, TokenKind type);
+bool  parser_check_next(Parser* p, TokenKind type);
+bool  parser_match     (Parser* p, TokenKind type);
+Token parser_consume   (Parser* p, TokenKind type, const char* err_cstr);
 
 Expression* parse_expression (Parser* p);
 Expression* parse_assignment (Parser* p);
@@ -1122,20 +1122,20 @@ Token parser_advance(Parser* p) {
 	return p->previous;
 }
 
-bool parser_check(Parser* p, TokenType type) {
+bool parser_check(Parser* p, TokenKind type) {
 	return p->current.type == type;
 }
-bool parser_check_next(Parser* p, TokenType type) {
+bool parser_check_next(Parser* p, TokenKind type) {
 	return p->next.type == type;
 }
-bool parser_match(Parser* p, TokenType type) {
+bool parser_match(Parser* p, TokenKind type) {
 	if (parser_check(p, type)) {
 		parser_advance(p);
 		return true;
 	}
 	return false;
 }
-Token parser_consume(Parser* p, TokenType type, const char* err_cstr) {
+Token parser_consume(Parser* p, TokenKind type, const char* err_cstr) {
 	if (parser_check(p, type)) {
 		return parser_advance(p);
 	}
@@ -1827,7 +1827,22 @@ void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc
 
 
 
+
+
+void execute_build_command(BuildCommand* bc);
+
+#include <stdint.h>
+#include <stdbool.h>
+
+uint64_t get_modification_time_sv(StringView path);
+uint64_t get_modification_time(const char *path_cstr);
+
+
+
+
+
 #include <signal.h>
+#include <stdint.h>
 
 static const SymbolValue nill = { .type = SYMBOL_VALUE_NIL };
 
@@ -1852,7 +1867,45 @@ BuildCommand* constructor_construct_build_command(Constructor* con) {
 
 
 void constructor_analyze(Constructor* con, BuildCommand* bc) {
-	build_command_mark_all_children_dirty(bc);
+	if (!con || !bc) return;
+
+	bool dirty_child = false;
+	for (size_t i = 0; i < bc->children.count; ++i) {
+		constructor_analyze(con, bc->children.items[i]);
+		if (bc->children.items[i]->dirty) {
+			dirty_child = true;
+		}
+	}
+	if (dirty_child) {
+		bc->dirty = true;
+		return;
+	}
+
+	uint64_t oldest_target_time = INT64_MAX;
+	for (size_t i = 0; i < bc->targets.count; ++i) {
+		uint64_t t = get_modification_time_sv(sv_from_sb(bc->targets.items[i].output_name));
+		if (t != 0 && t < oldest_target_time) {
+			oldest_target_time = t;
+		}
+	}
+
+	uint64_t newest_input_time = 0;
+	for (size_t i = 0; i < bc->input_files.count; ++i) {
+		uint64_t t = get_modification_time_sv(bc->input_files.items[i]);
+		if (t != 0 && t > newest_input_time) {
+			newest_input_time = t;
+		}
+	}
+	for (size_t i = 0; i < bc->targets.count; ++i) {
+		uint64_t t = get_modification_time_sv(sv_from_sb(bc->targets.items[i].input_name));
+		if (t != 0 && t > newest_input_time) {
+			newest_input_time = t;
+		}
+	}
+
+	if (oldest_target_time < newest_input_time) {
+		bc->dirty = true;
+	}
 }
 
 void constructor_error(Constructor* con, Token token, const char* error_cstr) {
@@ -2160,11 +2213,6 @@ void interpreter_expand_build_command_targets(Interpreter* in, BuildCommand* bc)
 
 
 
-void execute_build_command(BuildCommand* bc);
-
-
-
-
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
@@ -2184,7 +2232,6 @@ void interpreter_interpret(Interpreter* in) {
 	assert(in->root_build_command && in->root_build_command->body && "root bc body must not be null");
 
 	interpreter_execute(in, in->root_build_command->body);
-	execute_build_command(in->root_build_command);
 }
 
 void interpreter_error(Interpreter* in, Token token, const char* error_cstr) {
@@ -2611,6 +2658,7 @@ int cook(CookOptions op);
 
 
 
+
 int cook(CookOptions op) {
 	Lexer lexer = lexer_new(op.source);
 
@@ -2643,6 +2691,8 @@ int cook(CookOptions op) {
 		build_command_print(root_build_command, 0);
 	}
 
+	Interpreter interpreter = interpreter_new(root_build_command);
+	interpreter_interpret(&interpreter);
 
 	if (op.dry_run) {
 		if (op.verbose > 0) {
@@ -2651,11 +2701,10 @@ int cook(CookOptions op) {
 		build_command_mark_all_children_dirty(root_build_command);
 		build_command_dump(root_build_command, stdout, 0);
 	} else {
-		Interpreter interpreter = interpreter_new(root_build_command);
-		interpreter_interpret(&interpreter);
-		arena_free(&interpreter.arena);
+		execute_build_command(root_build_command);
 	}
 
+	arena_free(&interpreter.arena);
 	arena_free(&parser.arena);
 	arena_free(&constructor.arena);
 	return 0;
@@ -2720,6 +2769,46 @@ void execute_build_command(BuildCommand* bc) {
 	}
 
 	fclose(script);
+}
+
+
+#ifdef _WIN32
+	#include <windows.h>
+	#include <sys/types.h>
+	#include <sys/stat.h>
+#else
+	#include <sys/stat.h>
+	#include <time.h>
+#endif
+
+uint64_t get_modification_time(const char *path_cstr) {
+#ifdef _WIN32
+	WIN32_FILE_ATTRIBUTE_DATA attr;
+	if (!GetFileAttributesExA(path_cstr, GetFileExInfoStandard, &attr)) {
+		return 0;
+	}
+
+	FILETIME ft = attr.ftLastWriteTime;
+	ULARGE_INTEGER ull;
+	ull.LowPart  = ft.dwLowDateTime;
+	ull.HighPart = ft.dwHighDateTime;
+
+	return (ull.QuadPart - 116444736000000000ULL) / 10000000ULL;
+#else
+	struct stat st;
+	if (stat(path_cstr, &st) != 0) {
+		return 0;
+	}
+	return (uint64_t)st.st_mtime;
+#endif
+}
+
+uint64_t get_modification_time_sv(StringView path) {
+	char buf[512];
+	assert(path.count < sizeof(buf));
+	memcpy(buf, path.items, path.count);
+	buf[path.count] = '\0';
+	return get_modification_time(buf);
 }
 
 

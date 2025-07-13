@@ -45,20 +45,20 @@ Token parser_advance(Parser* p) {
 	return p->previous;
 }
 
-bool parser_check(Parser* p, TokenType type) {
+bool parser_check(Parser* p, TokenKind type) {
 	return p->current.type == type;
 }
-bool parser_check_next(Parser* p, TokenType type) {
+bool parser_check_next(Parser* p, TokenKind type) {
 	return p->next.type == type;
 }
-bool parser_match(Parser* p, TokenType type) {
+bool parser_match(Parser* p, TokenKind type) {
 	if (parser_check(p, type)) {
 		parser_advance(p);
 		return true;
 	}
 	return false;
 }
-Token parser_consume(Parser* p, TokenType type, const char* err_cstr) {
+Token parser_consume(Parser* p, TokenKind type, const char* err_cstr) {
 	if (parser_check(p, type)) {
 		return parser_advance(p);
 	}

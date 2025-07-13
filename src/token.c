@@ -8,7 +8,7 @@ const char* token_name_cstr(Token token) {
 }
 
 
-const char* token_type_name_cstr(TokenType tt) {
+const char* token_type_name_cstr(TokenKind tt) {
 	switch (tt) {
 		#define CASE(T) case T: return #T;
 		case TOKEN_INVALID: return "!!! TOKEN_INVALID";
@@ -62,7 +62,7 @@ const char* token_type_name_cstr(TokenType tt) {
 	return "!!! TOKEN INVALID";
 }
 
-TokenType token_lookup_keyword(const Token token) {
+TokenKind token_lookup_keyword(const Token token) {
 	#define KW(k,l) (token.str.count == l && 0 == strncmp(k, token.str.items, l))
 	if (KW("if", 2))       { return TOKEN_KEYWORD_IF; }
 	if (KW("else", 4))     { return TOKEN_KEYWORD_ELSE; }

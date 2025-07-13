@@ -1,7 +1,6 @@
 #include "interpreter.h"
 #include "build_command.h"
 #include "da.h"
-#include "executer.h"
 #include "expression.h"
 #include "statement.h"
 #include "symbol.h"
@@ -24,7 +23,6 @@ void interpreter_interpret(Interpreter* in) {
 	assert(in->root_build_command && in->root_build_command->body && "root bc body must not be null");
 
 	interpreter_execute(in, in->root_build_command->body);
-	execute_build_command(in->root_build_command);
 }
 
 void interpreter_error(Interpreter* in, Token token, const char* error_cstr) {
