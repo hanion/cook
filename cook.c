@@ -1650,6 +1650,35 @@ void statement_print(Statement* s, int indent) {
 
 
 
+#include <stdbool.h>
+
+typedef struct Target {
+	StringView name;
+	StringBuilder input_name;
+	StringBuilder output_name;
+	bool dirty;
+} Target;
+
+typedef struct TargetList {
+	Target* items;
+	size_t count;
+	size_t capacity;
+} TargetList;
+
+
+struct BuildCommand;
+StringBuilder target_generate_cmdline_cstr(Arena* arena, struct BuildCommand* bc, Target* t);
+StringBuilder target_generate_cmdline     (Arena* arena, struct BuildCommand* bc, Target* t);
+
+bool target_check_dirty(struct BuildCommand* bc, Target* t);
+
+
+
+
+
+
+
+
 
 
 typedef enum SymbolValueType {
@@ -1715,25 +1744,9 @@ void symbol_value_print(SymbolValue value, int indent);
 
 MethodType method_extract(StringView sv);
 
-
-
-
-
-
 #include <stdio.h>
 
 
-typedef struct Target {
-	StringView name;
-	StringBuilder input_name;
-	StringBuilder output_name;
-} Target;
-
-typedef struct TargetList {
-	Target* items;
-	size_t count;
-	size_t capacity;
-} TargetList;
 
 
 typedef enum BuildType {
@@ -1744,7 +1757,7 @@ typedef enum BuildType {
 
 typedef struct BuildCommand BuildCommand;
 
-typedef struct BuildCommandChildren {
+typedef struct {
 	BuildCommand** items;
 	size_t count;
 	size_t capacity;
@@ -1762,6 +1775,7 @@ struct BuildCommand {
 	TargetList targets;
 
 	StringList input_files;
+	StringList input_objects;
 
 	StringList include_dirs;
 	StringList include_files;
@@ -1790,7 +1804,108 @@ BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent);
 
 void build_type_print(BuildType type);
 
+void build_command_mark_all_targets_dirty(BuildCommand* bc);
 void build_command_mark_all_children_dirty(BuildCommand* bc);
+
+
+
+
+
+
+void execute_build_command(Arena* arena, BuildCommand* bc);
+
+#include <stdint.h>
+#include <stdbool.h>
+
+uint64_t get_modification_time_sv(StringView path);
+uint64_t get_modification_time(const char *path_cstr);
+
+
+
+
+StringBuilder target_generate_cmdline_cstr(Arena* arena, struct BuildCommand* bc, Target* t) {
+	StringBuilder sb = target_generate_cmdline(arena, bc, t);
+	da_append_arena(arena, &sb, '\0');
+	return sb;
+}
+
+
+inline static void target_print_stringview(Arena* arena, StringBuilder* sb, StringView sv) {
+	da_reserve_arena(arena, sb, sb->count + sv.count + 1);
+	int written = snprintf(sb->items + sb->count, sv.count + 2, "%.*s ", (int)sv.count, sv.items);
+	sb->count += written;
+}
+
+inline static void target_string_list_print_flat(Arena* arena, StringBuilder* sb, const StringList* list, const char* prefix) {
+	if (!list || !list->items) {
+		return;
+	}
+	for (size_t i = 0; i < list->count; ++i) {
+		if (prefix && strlen(prefix) > 0) {
+			int written = sprintf(sb->items, "%s", prefix);
+			sb->count += written;
+		}
+		target_print_stringview(arena, sb, list->items[i]);
+	}
+}
+
+StringBuilder target_generate_cmdline(Arena* arena, struct BuildCommand* bc, Target* t) {
+	StringBuilder sb = {0};
+	if (!arena || !bc || !t) return sb;
+
+
+	if (bc->compiler.count > 0) {
+		target_print_stringview(arena, &sb, bc->compiler);
+	}
+
+	target_string_list_print_flat(arena, &sb, &bc->cflags, "");
+
+	if (bc->build_type == BUILD_OBJECT) {
+		da_append_many_arena(arena, &sb, "-c ", 3);
+	}
+
+	da_append_many_arena(arena, &sb, "-o ", 3);
+	target_print_stringview(arena, &sb, sv_from_sb(t->output_name));
+	target_print_stringview(arena, &sb, sv_from_sb(t->input_name));
+
+	target_string_list_print_flat(arena, &sb, &bc->include_dirs, "-I");
+	target_string_list_print_flat(arena, &sb, &bc->input_files, "");
+	target_string_list_print_flat(arena, &sb, &bc->input_objects, "");
+	target_string_list_print_flat(arena, &sb, &bc->library_dirs, "-L");
+	target_string_list_print_flat(arena, &sb, &bc->library_links, "-l");
+	target_string_list_print_flat(arena, &sb, &bc->ldflags, "");
+
+	return sb;
+}
+
+
+bool target_check_dirty(struct BuildCommand* bc, Target* t) {
+	uint64_t out_time = get_modification_time_sv(sv_from_sb(t->output_name));
+	uint64_t in_time  = get_modification_time_sv(sv_from_sb(t->input_name));
+
+	for (size_t i = 0; i < bc->input_files.count; ++i) {
+		uint64_t time = get_modification_time_sv(bc->input_files.items[i]);
+		if (time != 0 && time > in_time) {
+			in_time = time;
+		}
+	}
+
+	if (out_time > in_time) {
+		return false;
+	}
+	
+	t->dirty = true;
+	bc->dirty = true;
+
+	BuildCommand* p = bc->parent;
+	while (p) {
+		p->dirty = true;
+		p = p->parent;
+	}
+
+	return true;
+}
+
 
 
 
@@ -1824,18 +1939,6 @@ SymbolValue constructor_interpret_description (Constructor* con, StatementDescri
 SymbolValue constructor_interpret_method_build(Constructor* con, ExpressionCall* e);
 
 void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc);
-
-
-
-
-
-void execute_build_command(BuildCommand* bc);
-
-#include <stdint.h>
-#include <stdbool.h>
-
-uint64_t get_modification_time_sv(StringView path);
-uint64_t get_modification_time(const char *path_cstr);
 
 
 
@@ -1876,35 +1979,21 @@ void constructor_analyze(Constructor* con, BuildCommand* bc) {
 			dirty_child = true;
 		}
 	}
+
+	for (size_t i = 0; i < bc->targets.count; ++i) {
+		if (target_check_dirty(bc, &bc->targets.items[i])) {
+			dirty_child = true;
+		}
+	}
+
 	if (dirty_child) {
 		bc->dirty = true;
-		return;
-	}
-
-	uint64_t oldest_target_time = INT64_MAX;
-	for (size_t i = 0; i < bc->targets.count; ++i) {
-		uint64_t t = get_modification_time_sv(sv_from_sb(bc->targets.items[i].output_name));
-		if (t != 0 && t < oldest_target_time) {
-			oldest_target_time = t;
+		BuildCommand* p = bc->parent;
+		while (p) {
+			p->dirty = true;
+			build_command_mark_all_targets_dirty(p);
+			p = p->parent;
 		}
-	}
-
-	uint64_t newest_input_time = 0;
-	for (size_t i = 0; i < bc->input_files.count; ++i) {
-		uint64_t t = get_modification_time_sv(bc->input_files.items[i]);
-		if (t != 0 && t > newest_input_time) {
-			newest_input_time = t;
-		}
-	}
-	for (size_t i = 0; i < bc->targets.count; ++i) {
-		uint64_t t = get_modification_time_sv(sv_from_sb(bc->targets.items[i].input_name));
-		if (t != 0 && t > newest_input_time) {
-			newest_input_time = t;
-		}
-	}
-
-	if (oldest_target_time < newest_input_time) {
-		bc->dirty = true;
 	}
 }
 
@@ -2165,7 +2254,7 @@ void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc
 		}
 
 		if (bc->parent) {
-			da_append_arena(&con->arena, &bc->parent->input_files, sv_from_sb(t->output_name));
+			da_append_arena(&con->arena, &bc->parent->input_objects, sv_from_sb(t->output_name));
 		}
 	}
 
@@ -2464,6 +2553,9 @@ BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent) {
 inline static void indent_label(int indent, const char* label) {
 	printf("%*s%-14s: ", indent * INDENT_MULTIPLIER, "", label);
 }
+inline static void indent_label_sv(int indent, StringView sv) {
+	printf("%*s%-14.*s: ", indent * INDENT_MULTIPLIER, "", (int)sv.count, sv.items);
+}
 inline static void string_list_print_big(int indent, const char* label, const StringList* list) {
 	if (list->count == 0) return;
 
@@ -2477,19 +2569,21 @@ inline static void string_list_print_big(int indent, const char* label, const St
 	}
 	printf("\n");
 }
-inline static void target_list_print_big(int indent, const char* label, const TargetList* list) {
-	if (list->count == 0) return;
 
-	indent_label(indent, label);
-	for (size_t i = 0; i < list->count; ++i) {
-		const Target* sv = &list->items[i];
-		printf("%.*s", (int)sv->name.count, sv->name.items);
-		printf(":%.*s", (int)sv->output_name.count, sv->output_name.items);
-		if (i + 1 < list->count) {
-			printf(", ");
-		}
-	}
+inline static void target_list_print_pretty(size_t indent, TargetList list) {
+	if (list.count == 0) return;
+
+	indent_label(indent, "targets");
 	printf("\n");
+
+	for (size_t i = 0; i <  list.count; ++i) {
+		Target* t = &list.items[i];
+		indent_label_sv(indent+1, t->name);
+		printf("input: %-25.*s ", (int)t->input_name.count, t->input_name.items);
+		printf("output: %-25.*s ", (int)t->output_name.count, t->output_name.items);
+		if (t->dirty) printf("[dirty]");
+		printf("\n");
+	}
 }
 
 void build_command_print(BuildCommand* bc, size_t indent) {
@@ -2499,10 +2593,9 @@ void build_command_print(BuildCommand* bc, size_t indent) {
 	size_t ni = indent + 1;
 
 	indent_label(ni, "build command");
+	if (bc->dirty) printf("[dirty]");
 	printf("\n");
 
-	indent_label(ni, "dirty");
-	printf("%b\n", bc->dirty);
 
 	if (bc->compiler.count > 0) {
 		indent_label(ni, "compiler");
@@ -2513,8 +2606,9 @@ void build_command_print(BuildCommand* bc, size_t indent) {
 	build_type_print(bc->build_type);
 	printf("\n");
 
-	target_list_print_big(ni, "targets", &bc->targets);
+	target_list_print_pretty(ni, bc->targets);
 	string_list_print_big(ni, "input files", &bc->input_files);
+	string_list_print_big(ni, "input objects", &bc->input_objects);
 	string_list_print_big(ni, "include dirs", &bc->include_dirs);
 	string_list_print_big(ni, "include files", &bc->include_files);
 	string_list_print_big(ni, "library dirs", &bc->library_dirs);
@@ -2621,9 +2715,16 @@ void build_type_print(BuildType type) {
 	}
 }
 
+void build_command_mark_all_targets_dirty(BuildCommand* bc) {
+	if (!bc || bc->marked_clean_explicitly) return;
+	for (size_t i = 0; i < bc->targets.count; ++i) {
+		bc->targets.items[i].dirty = true;
+	}
+}
 void build_command_mark_all_children_dirty(BuildCommand* bc) {
 	if (!bc || bc->marked_clean_explicitly) return;
 	bc->dirty = true;
+	build_command_mark_all_targets_dirty(bc);
 	for (size_t i = 0; i < bc->children.count; ++i) {
 		build_command_mark_all_children_dirty(bc->children.items[i]);
 	}
@@ -2701,7 +2802,7 @@ int cook(CookOptions op) {
 		build_command_mark_all_children_dirty(root_build_command);
 		build_command_dump(root_build_command, stdout, 0);
 	} else {
-		execute_build_command(root_build_command);
+		execute_build_command(&interpreter.arena, root_build_command);
 	}
 
 	arena_free(&interpreter.arena);
@@ -2709,6 +2810,7 @@ int cook(CookOptions op) {
 	arena_free(&constructor.arena);
 	return 0;
 }
+
 
 
 
@@ -2730,7 +2832,7 @@ static inline int execute_line(const char* line) {
 }
 
 
-void execute_build_command(BuildCommand* bc) {
+void execute_build_command(Arena* arena, BuildCommand* bc) {
 	if (!bc || !bc->dirty) {
 		return;
 	}
@@ -2746,29 +2848,20 @@ void execute_build_command(BuildCommand* bc) {
 		free(sb.items);
 	}
 
-	FILE* script = tmpfile();
-	if (!script) {
-		perror("tmpfile");
-		exit(1);
+	for (size_t i = 0; i < bc->children.count; ++i) {
+		execute_build_command(arena, bc->children.items[i]);
 	}
+	
+	for (size_t i = 0; i < bc->targets.count; ++i) {
+		Target* t = &bc->targets.items[i];
+		if (!t->dirty) continue;
 
-	build_command_dump(bc, script, 0);
+		StringBuilder sb = target_generate_cmdline_cstr(arena, bc, t);
 
-	rewind(script);
-	char line[CMD_LINE_MAX];
-	while (fgets(line, sizeof(line), script)) {
-		size_t len = strlen(line);
-		while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
-			line[--len] = '\0';
-		}
-		printf("$ %.*s\n", (int)len, line);
-		int ret = execute_line(line);
-		if (ret != 0) {
-			break;
-		}
+		printf("$ %.*s\n", (int)sb.count, sb.items);
+		int ret = execute_line(sb.items);
+		if (ret != 0) break;
 	}
-
-	fclose(script);
 }
 
 
@@ -2836,7 +2929,7 @@ int main(int argc, char** argv) {
 	CookOptions op = cook_options_default();
 
 	if (0) {
-		printf("DEBUGGING MODE");
+		printf("DEBUGGING MODE\n");
 		StringBuilder source = {0};
 		if (access("../Cookfile", F_OK) == 0 && read_entire_file("../Cookfile", &source)) {
 

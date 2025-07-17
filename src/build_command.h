@@ -4,19 +4,8 @@
 #include "statement.h"
 #include "symbol.h"
 #include <stdio.h>
+#include "target.h"
 
-
-typedef struct Target {
-	StringView name;
-	StringBuilder input_name;
-	StringBuilder output_name;
-} Target;
-
-typedef struct TargetList {
-	Target* items;
-	size_t count;
-	size_t capacity;
-} TargetList;
 
 
 typedef enum BuildType {
@@ -27,7 +16,7 @@ typedef enum BuildType {
 
 typedef struct BuildCommand BuildCommand;
 
-typedef struct BuildCommandChildren {
+typedef struct {
 	BuildCommand** items;
 	size_t count;
 	size_t capacity;
@@ -45,6 +34,7 @@ struct BuildCommand {
 	TargetList targets;
 
 	StringList input_files;
+	StringList input_objects;
 
 	StringList include_dirs;
 	StringList include_files;
@@ -72,6 +62,7 @@ BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent);
 
 void build_type_print(BuildType type);
 
+void build_command_mark_all_targets_dirty(BuildCommand* bc);
 void build_command_mark_all_children_dirty(BuildCommand* bc);
 
 

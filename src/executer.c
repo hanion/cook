@@ -1,6 +1,7 @@
 #include "executer.h"
 #include "file.h"
 #include "build_command.h"
+#include "target.h"
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -18,7 +19,7 @@ static inline int execute_line(const char* line) {
 }
 
 
-void execute_build_command(BuildCommand* bc) {
+void execute_build_command(Arena* arena, BuildCommand* bc) {
 	if (!bc || !bc->dirty) {
 		return;
 	}
@@ -34,29 +35,20 @@ void execute_build_command(BuildCommand* bc) {
 		free(sb.items);
 	}
 
-	FILE* script = tmpfile();
-	if (!script) {
-		perror("tmpfile");
-		exit(1);
+	for (size_t i = 0; i < bc->children.count; ++i) {
+		execute_build_command(arena, bc->children.items[i]);
 	}
+	
+	for (size_t i = 0; i < bc->targets.count; ++i) {
+		Target* t = &bc->targets.items[i];
+		if (!t->dirty) continue;
 
-	build_command_dump(bc, script, 0);
+		StringBuilder sb = target_generate_cmdline_cstr(arena, bc, t);
 
-	rewind(script);
-	char line[CMD_LINE_MAX];
-	while (fgets(line, sizeof(line), script)) {
-		size_t len = strlen(line);
-		while (len > 0 && (line[len - 1] == '\n' || line[len - 1] == '\r')) {
-			line[--len] = '\0';
-		}
-		printf("$ %.*s\n", (int)len, line);
-		int ret = execute_line(line);
-		if (ret != 0) {
-			break;
-		}
+		printf("$ %.*s\n", (int)sb.count, sb.items);
+		int ret = execute_line(sb.items);
+		if (ret != 0) break;
 	}
-
-	fclose(script);
 }
 
 

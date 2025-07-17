@@ -1,8 +1,8 @@
 #include "constructor.h"
 #include "da.h"
-#include "executer.h"
 #include "statement.h"
 #include "symbol.h"
+#include "target.h"
 #include <signal.h>
 #include <stdint.h>
 
@@ -38,35 +38,21 @@ void constructor_analyze(Constructor* con, BuildCommand* bc) {
 			dirty_child = true;
 		}
 	}
+
+	for (size_t i = 0; i < bc->targets.count; ++i) {
+		if (target_check_dirty(bc, &bc->targets.items[i])) {
+			dirty_child = true;
+		}
+	}
+
 	if (dirty_child) {
 		bc->dirty = true;
-		return;
-	}
-
-	uint64_t oldest_target_time = INT64_MAX;
-	for (size_t i = 0; i < bc->targets.count; ++i) {
-		uint64_t t = get_modification_time_sv(sv_from_sb(bc->targets.items[i].output_name));
-		if (t != 0 && t < oldest_target_time) {
-			oldest_target_time = t;
+		BuildCommand* p = bc->parent;
+		while (p) {
+			p->dirty = true;
+			build_command_mark_all_targets_dirty(p);
+			p = p->parent;
 		}
-	}
-
-	uint64_t newest_input_time = 0;
-	for (size_t i = 0; i < bc->input_files.count; ++i) {
-		uint64_t t = get_modification_time_sv(bc->input_files.items[i]);
-		if (t != 0 && t > newest_input_time) {
-			newest_input_time = t;
-		}
-	}
-	for (size_t i = 0; i < bc->targets.count; ++i) {
-		uint64_t t = get_modification_time_sv(sv_from_sb(bc->targets.items[i].input_name));
-		if (t != 0 && t > newest_input_time) {
-			newest_input_time = t;
-		}
-	}
-
-	if (oldest_target_time < newest_input_time) {
-		bc->dirty = true;
 	}
 }
 
@@ -327,7 +313,7 @@ void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc
 		}
 
 		if (bc->parent) {
-			da_append_arena(&con->arena, &bc->parent->input_files, sv_from_sb(t->output_name));
+			da_append_arena(&con->arena, &bc->parent->input_objects, sv_from_sb(t->output_name));
 		}
 	}
 

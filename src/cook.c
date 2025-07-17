@@ -49,7 +49,7 @@ int cook(CookOptions op) {
 		build_command_mark_all_children_dirty(root_build_command);
 		build_command_dump(root_build_command, stdout, 0);
 	} else {
-		execute_build_command(root_build_command);
+		execute_build_command(&interpreter.arena, root_build_command);
 	}
 
 	arena_free(&interpreter.arena);

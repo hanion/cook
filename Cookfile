@@ -7,7 +7,7 @@ build(tester).build(file)
 
 build(cook) {
 	build(file, token, lexer, arena, parser, expression, statement, symbol,
-	   build_command, constructor, interpreter, executer, main)
+	   target, build_command, constructor, interpreter, executer, main)
 }
 
 

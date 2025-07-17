@@ -1,7 +1,7 @@
 #pragma once
 #include "build_command.h"
 
-void execute_build_command(BuildCommand* bc);
+void execute_build_command(Arena* arena, BuildCommand* bc);
 
 #include <stdint.h>
 #include <stdbool.h>

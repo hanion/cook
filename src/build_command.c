@@ -45,6 +45,9 @@ BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent) {
 inline static void indent_label(int indent, const char* label) {
 	printf("%*s%-14s: ", indent * INDENT_MULTIPLIER, "", label);
 }
+inline static void indent_label_sv(int indent, StringView sv) {
+	printf("%*s%-14.*s: ", indent * INDENT_MULTIPLIER, "", (int)sv.count, sv.items);
+}
 inline static void string_list_print_big(int indent, const char* label, const StringList* list) {
 	if (list->count == 0) return;
 
@@ -58,19 +61,21 @@ inline static void string_list_print_big(int indent, const char* label, const St
 	}
 	printf("\n");
 }
-inline static void target_list_print_big(int indent, const char* label, const TargetList* list) {
-	if (list->count == 0) return;
 
-	indent_label(indent, label);
-	for (size_t i = 0; i < list->count; ++i) {
-		const Target* sv = &list->items[i];
-		printf("%.*s", (int)sv->name.count, sv->name.items);
-		printf(":%.*s", (int)sv->output_name.count, sv->output_name.items);
-		if (i + 1 < list->count) {
-			printf(", ");
-		}
-	}
+inline static void target_list_print_pretty(size_t indent, TargetList list) {
+	if (list.count == 0) return;
+
+	indent_label(indent, "targets");
 	printf("\n");
+
+	for (size_t i = 0; i <  list.count; ++i) {
+		Target* t = &list.items[i];
+		indent_label_sv(indent+1, t->name);
+		printf("input: %-25.*s ", (int)t->input_name.count, t->input_name.items);
+		printf("output: %-25.*s ", (int)t->output_name.count, t->output_name.items);
+		if (t->dirty) printf("[dirty]");
+		printf("\n");
+	}
 }
 
 void build_command_print(BuildCommand* bc, size_t indent) {
@@ -80,10 +85,9 @@ void build_command_print(BuildCommand* bc, size_t indent) {
 	size_t ni = indent + 1;
 
 	indent_label(ni, "build command");
+	if (bc->dirty) printf("[dirty]");
 	printf("\n");
 
-	indent_label(ni, "dirty");
-	printf("%b\n", bc->dirty);
 
 	if (bc->compiler.count > 0) {
 		indent_label(ni, "compiler");
@@ -94,8 +98,9 @@ void build_command_print(BuildCommand* bc, size_t indent) {
 	build_type_print(bc->build_type);
 	printf("\n");
 
-	target_list_print_big(ni, "targets", &bc->targets);
+	target_list_print_pretty(ni, bc->targets);
 	string_list_print_big(ni, "input files", &bc->input_files);
+	string_list_print_big(ni, "input objects", &bc->input_objects);
 	string_list_print_big(ni, "include dirs", &bc->include_dirs);
 	string_list_print_big(ni, "include files", &bc->include_files);
 	string_list_print_big(ni, "library dirs", &bc->library_dirs);
@@ -202,9 +207,16 @@ void build_type_print(BuildType type) {
 	}
 }
 
+void build_command_mark_all_targets_dirty(BuildCommand* bc) {
+	if (!bc || bc->marked_clean_explicitly) return;
+	for (size_t i = 0; i < bc->targets.count; ++i) {
+		bc->targets.items[i].dirty = true;
+	}
+}
 void build_command_mark_all_children_dirty(BuildCommand* bc) {
 	if (!bc || bc->marked_clean_explicitly) return;
 	bc->dirty = true;
+	build_command_mark_all_targets_dirty(bc);
 	for (size_t i = 0; i < bc->children.count; ++i) {
 		build_command_mark_all_children_dirty(bc->children.items[i]);
 	}
