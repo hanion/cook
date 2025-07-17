@@ -15,13 +15,14 @@ inline static void target_print_stringview(Arena* arena, StringBuilder* sb, Stri
 	sb->count += written;
 }
 
-inline static void target_string_list_print_flat(Arena* arena, StringBuilder* sb, const StringList* list, const char* prefix) {
+inline static void target_string_list_print_flat(Arena* arena, StringBuilder* sb, const StringList* list, const char* prefix, size_t prefix_len) {
 	if (!list || !list->items) {
 		return;
 	}
 	for (size_t i = 0; i < list->count; ++i) {
-		if (prefix && strlen(prefix) > 0) {
-			int written = sprintf(sb->items, "%s", prefix);
+		if (prefix_len > 0) {
+			da_reserve_arena(arena, sb, sb->count + prefix_len + 1);
+			int written = snprintf(sb->items + sb->count, prefix_len + 1, "%.*s", (int)prefix_len, prefix);
 			sb->count += written;
 		}
 		target_print_stringview(arena, sb, list->items[i]);
@@ -37,7 +38,7 @@ StringBuilder target_generate_cmdline(Arena* arena, struct BuildCommand* bc, Tar
 		target_print_stringview(arena, &sb, bc->compiler);
 	}
 
-	target_string_list_print_flat(arena, &sb, &bc->cflags, "");
+	target_string_list_print_flat(arena, &sb, &bc->cflags, "",0);
 
 	if (bc->build_type == BUILD_OBJECT) {
 		da_append_many_arena(arena, &sb, "-c ", 3);
@@ -47,18 +48,20 @@ StringBuilder target_generate_cmdline(Arena* arena, struct BuildCommand* bc, Tar
 	target_print_stringview(arena, &sb, sv_from_sb(t->output_name));
 	target_print_stringview(arena, &sb, sv_from_sb(t->input_name));
 
-	target_string_list_print_flat(arena, &sb, &bc->include_dirs, "-I");
-	target_string_list_print_flat(arena, &sb, &bc->input_files, "");
-	target_string_list_print_flat(arena, &sb, &bc->input_objects, "");
-	target_string_list_print_flat(arena, &sb, &bc->library_dirs, "-L");
-	target_string_list_print_flat(arena, &sb, &bc->library_links, "-l");
-	target_string_list_print_flat(arena, &sb, &bc->ldflags, "");
+	target_string_list_print_flat(arena, &sb, &bc->include_dirs,  "-I", 2);
+	target_string_list_print_flat(arena, &sb, &bc->input_files,   "",   0);
+	target_string_list_print_flat(arena, &sb, &bc->input_objects, "",   0);
+	target_string_list_print_flat(arena, &sb, &bc->library_dirs,  "-L", 2);
+	target_string_list_print_flat(arena, &sb, &bc->library_links, "-l", 2);
+	target_string_list_print_flat(arena, &sb, &bc->ldflags,       "",   0);
 
 	return sb;
 }
 
 
 bool target_check_dirty(struct BuildCommand* bc, Target* t) {
+	if (bc->marked_clean_explicitly) return false;
+
 	uint64_t out_time = get_modification_time_sv(sv_from_sb(t->output_name));
 	uint64_t in_time  = get_modification_time_sv(sv_from_sb(t->input_name));
 

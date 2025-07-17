@@ -56,13 +56,13 @@ BuildCommand* build_command_new(Arena*);
 
 BuildCommand build_command_default(void);
 void         build_command_print  (BuildCommand* bc, size_t indent);
-void         build_command_dump   (BuildCommand* bc, FILE* stream, size_t target_to_build);
+void         build_command_dump   (Arena* arena, BuildCommand* bc, FILE* stream, size_t target_to_build);
 
 BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent);
 
 void build_type_print(BuildType type);
 
-void build_command_mark_all_targets_dirty(BuildCommand* bc);
-void build_command_mark_all_children_dirty(BuildCommand* bc);
+void build_command_mark_all_targets_dirty (BuildCommand* bc, bool dirty);
+void build_command_mark_all_children_dirty(BuildCommand* bc, bool dirty);
 
 

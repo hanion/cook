@@ -31,7 +31,7 @@ int cook(CookOptions op) {
 	BuildCommand* root_build_command = constructor_construct_build_command(&constructor);
 
 	if (op.build_all) {
-		build_command_mark_all_children_dirty(root_build_command);
+		build_command_mark_all_children_dirty(root_build_command, true);
 	}
 
 	if (op.verbose > 0) {
@@ -46,8 +46,8 @@ int cook(CookOptions op) {
 		if (op.verbose > 0) {
 			printf("[cook] build command dump:\n");
 		}
-		build_command_mark_all_children_dirty(root_build_command);
-		build_command_dump(root_build_command, stdout, 0);
+		build_command_mark_all_children_dirty(root_build_command, true);
+		build_command_dump(&interpreter.arena, root_build_command, stdout, 0);
 	} else {
 		execute_build_command(&interpreter.arena, root_build_command);
 	}

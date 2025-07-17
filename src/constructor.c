@@ -45,12 +45,11 @@ void constructor_analyze(Constructor* con, BuildCommand* bc) {
 		}
 	}
 
-	if (dirty_child) {
+	if (dirty_child && !bc->marked_clean_explicitly) {
 		bc->dirty = true;
 		BuildCommand* p = bc->parent;
 		while (p) {
-			p->dirty = true;
-			build_command_mark_all_targets_dirty(p);
+			build_command_mark_all_targets_dirty(p, true);
 			p = p->parent;
 		}
 	}
@@ -236,6 +235,7 @@ SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
 		}
 	} else if (callee.method_type == METHOD_MARK_CLEAN) {
 		con->current_build_command->marked_clean_explicitly = true;
+		build_command_mark_all_children_dirty(con->current_build_command, false);
 	}
 	return nill;
 }

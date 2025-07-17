@@ -1798,14 +1798,14 @@ BuildCommand* build_command_new(Arena*);
 
 BuildCommand build_command_default(void);
 void         build_command_print  (BuildCommand* bc, size_t indent);
-void         build_command_dump   (BuildCommand* bc, FILE* stream, size_t target_to_build);
+void         build_command_dump   (Arena* arena, BuildCommand* bc, FILE* stream, size_t target_to_build);
 
 BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent);
 
 void build_type_print(BuildType type);
 
-void build_command_mark_all_targets_dirty(BuildCommand* bc);
-void build_command_mark_all_children_dirty(BuildCommand* bc);
+void build_command_mark_all_targets_dirty (BuildCommand* bc, bool dirty);
+void build_command_mark_all_children_dirty(BuildCommand* bc, bool dirty);
 
 
 
@@ -1836,13 +1836,14 @@ inline static void target_print_stringview(Arena* arena, StringBuilder* sb, Stri
 	sb->count += written;
 }
 
-inline static void target_string_list_print_flat(Arena* arena, StringBuilder* sb, const StringList* list, const char* prefix) {
+inline static void target_string_list_print_flat(Arena* arena, StringBuilder* sb, const StringList* list, const char* prefix, size_t prefix_len) {
 	if (!list || !list->items) {
 		return;
 	}
 	for (size_t i = 0; i < list->count; ++i) {
-		if (prefix && strlen(prefix) > 0) {
-			int written = sprintf(sb->items, "%s", prefix);
+		if (prefix_len > 0) {
+			da_reserve_arena(arena, sb, sb->count + prefix_len + 1);
+			int written = snprintf(sb->items + sb->count, prefix_len + 1, "%.*s", (int)prefix_len, prefix);
 			sb->count += written;
 		}
 		target_print_stringview(arena, sb, list->items[i]);
@@ -1858,7 +1859,7 @@ StringBuilder target_generate_cmdline(Arena* arena, struct BuildCommand* bc, Tar
 		target_print_stringview(arena, &sb, bc->compiler);
 	}
 
-	target_string_list_print_flat(arena, &sb, &bc->cflags, "");
+	target_string_list_print_flat(arena, &sb, &bc->cflags, "",0);
 
 	if (bc->build_type == BUILD_OBJECT) {
 		da_append_many_arena(arena, &sb, "-c ", 3);
@@ -1868,18 +1869,20 @@ StringBuilder target_generate_cmdline(Arena* arena, struct BuildCommand* bc, Tar
 	target_print_stringview(arena, &sb, sv_from_sb(t->output_name));
 	target_print_stringview(arena, &sb, sv_from_sb(t->input_name));
 
-	target_string_list_print_flat(arena, &sb, &bc->include_dirs, "-I");
-	target_string_list_print_flat(arena, &sb, &bc->input_files, "");
-	target_string_list_print_flat(arena, &sb, &bc->input_objects, "");
-	target_string_list_print_flat(arena, &sb, &bc->library_dirs, "-L");
-	target_string_list_print_flat(arena, &sb, &bc->library_links, "-l");
-	target_string_list_print_flat(arena, &sb, &bc->ldflags, "");
+	target_string_list_print_flat(arena, &sb, &bc->include_dirs,  "-I", 2);
+	target_string_list_print_flat(arena, &sb, &bc->input_files,   "",   0);
+	target_string_list_print_flat(arena, &sb, &bc->input_objects, "",   0);
+	target_string_list_print_flat(arena, &sb, &bc->library_dirs,  "-L", 2);
+	target_string_list_print_flat(arena, &sb, &bc->library_links, "-l", 2);
+	target_string_list_print_flat(arena, &sb, &bc->ldflags,       "",   0);
 
 	return sb;
 }
 
 
 bool target_check_dirty(struct BuildCommand* bc, Target* t) {
+	if (bc->marked_clean_explicitly) return false;
+
 	uint64_t out_time = get_modification_time_sv(sv_from_sb(t->output_name));
 	uint64_t in_time  = get_modification_time_sv(sv_from_sb(t->input_name));
 
@@ -1986,12 +1989,11 @@ void constructor_analyze(Constructor* con, BuildCommand* bc) {
 		}
 	}
 
-	if (dirty_child) {
+	if (dirty_child && !bc->marked_clean_explicitly) {
 		bc->dirty = true;
 		BuildCommand* p = bc->parent;
 		while (p) {
-			p->dirty = true;
-			build_command_mark_all_targets_dirty(p);
+			build_command_mark_all_targets_dirty(p, true);
 			p = p->parent;
 		}
 	}
@@ -2177,6 +2179,7 @@ SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
 		}
 	} else if (callee.method_type == METHOD_MARK_CLEAN) {
 		con->current_build_command->marked_clean_explicitly = true;
+		build_command_mark_all_children_dirty(con->current_build_command, false);
 	}
 	return nill;
 }
@@ -2637,21 +2640,8 @@ void build_command_print(BuildCommand* bc, size_t indent) {
 }
 
 
-inline static void print_stringview(FILE* stream, StringView sv) {
-	fprintf(stream, "%.*s ", (int)sv.count, sv.items);
-}
 
-inline static void string_list_print_flat(FILE* stream, const StringList* list, const char* prefix) {
-	if (!list || !list->items) {
-		return;
-	}
-	for (size_t i = 0; i < list->count; ++i) {
-		if (prefix) { fprintf(stream, "%s", prefix); }
-		print_stringview(stream, list->items[i]);
-	}
-}
-
-void build_command_dump(BuildCommand* bc, FILE* stream, size_t target_to_build) {
+void build_command_dump(Arena* arena, BuildCommand* bc, FILE* stream, size_t target_to_build) {
 	if (!bc || !bc->dirty) {
 		return;
 	}
@@ -2659,14 +2649,14 @@ void build_command_dump(BuildCommand* bc, FILE* stream, size_t target_to_build) 
 	// skip root bc
 	if (!bc->parent) {
 		for (size_t i = 0; i < bc->children.count; ++i) {
-			build_command_dump(bc->children.items[i], stream, 0);
+			build_command_dump(arena, bc->children.items[i], stream, 0);
 		}
 		return;
 	}
 
 	// recurse into children
 	for (size_t i = 0; i < bc->children.count; ++i) {
-		build_command_dump(bc->children.items[i], stream, 0);
+		build_command_dump(arena, bc->children.items[i], stream, 0);
 	}
 
 	if (bc->targets.count == 0) {
@@ -2676,33 +2666,13 @@ void build_command_dump(BuildCommand* bc, FILE* stream, size_t target_to_build) 
 		return;
 	}
 
+	StringBuilder sb = target_generate_cmdline(arena, bc, &bc->targets.items[target_to_build]);
 
-	if (bc->compiler.count > 0) {
-		print_stringview(stream, bc->compiler);
-	}
-
-	string_list_print_flat(stream, &bc->cflags, "");
-
-	if (bc->build_type == BUILD_OBJECT) {
-		fprintf(stream, "-c ");
-	}
-
-	fprintf(stream, "-o ");
-	Target* t = &bc->targets.items[target_to_build];
-	print_stringview(stream, sv_from_sb(t->output_name));
-	print_stringview(stream, sv_from_sb(t->input_name));
-
-	string_list_print_flat(stream, &bc->include_dirs, "-I");
-	string_list_print_flat(stream, &bc->input_files, "");
-	string_list_print_flat(stream, &bc->library_dirs, "-L");
-	string_list_print_flat(stream, &bc->library_links, "-l");
-	string_list_print_flat(stream, &bc->ldflags, "");
-
-	fprintf(stream, "\n");
+	printf("%.*s\n", (int)sb.count, sb.items);
 
 	if (target_to_build == 0) {
 		for (size_t i = 1; i < bc->targets.count; ++i) {
-			build_command_dump(bc, stream, i);
+			build_command_dump(arena, bc, stream, i);
 		}
 	}
 }
@@ -2715,18 +2685,18 @@ void build_type_print(BuildType type) {
 	}
 }
 
-void build_command_mark_all_targets_dirty(BuildCommand* bc) {
-	if (!bc || bc->marked_clean_explicitly) return;
+void build_command_mark_all_targets_dirty(BuildCommand* bc, bool dirty) {
+	if (!bc || (bc->marked_clean_explicitly==dirty)) return;
 	for (size_t i = 0; i < bc->targets.count; ++i) {
-		bc->targets.items[i].dirty = true;
+		bc->targets.items[i].dirty = dirty;
 	}
 }
-void build_command_mark_all_children_dirty(BuildCommand* bc) {
-	if (!bc || bc->marked_clean_explicitly) return;
-	bc->dirty = true;
-	build_command_mark_all_targets_dirty(bc);
+void build_command_mark_all_children_dirty(BuildCommand* bc, bool dirty) {
+	if (!bc || (bc->marked_clean_explicitly==dirty)) return;
+	bc->dirty = dirty;
+	build_command_mark_all_targets_dirty(bc, dirty);
 	for (size_t i = 0; i < bc->children.count; ++i) {
-		build_command_mark_all_children_dirty(bc->children.items[i]);
+		build_command_mark_all_children_dirty(bc->children.items[i], dirty);
 	}
 }
 
@@ -2784,7 +2754,7 @@ int cook(CookOptions op) {
 	BuildCommand* root_build_command = constructor_construct_build_command(&constructor);
 
 	if (op.build_all) {
-		build_command_mark_all_children_dirty(root_build_command);
+		build_command_mark_all_children_dirty(root_build_command, true);
 	}
 
 	if (op.verbose > 0) {
@@ -2799,8 +2769,8 @@ int cook(CookOptions op) {
 		if (op.verbose > 0) {
 			printf("[cook] build command dump:\n");
 		}
-		build_command_mark_all_children_dirty(root_build_command);
-		build_command_dump(root_build_command, stdout, 0);
+		build_command_mark_all_children_dirty(root_build_command, true);
+		build_command_dump(&interpreter.arena, root_build_command, stdout, 0);
 	} else {
 		execute_build_command(&interpreter.arena, root_build_command);
 	}
