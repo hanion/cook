@@ -10,10 +10,10 @@ BuildCommand* build_command_new(Arena* arena) {
 }
 
 BuildCommand build_command_default(void) {
-	static const StringView gcc = { .items = "gcc", .count = 3 };
+	static const StringView cc = { .items = "cc", .count = 3 };
 
 	BuildCommand bc = {0};
-	bc.compiler = gcc;
+	bc.compiler = cc;
 	bc.build_type = BUILD_EXECUTABLE;
 	return bc;
 }

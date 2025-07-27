@@ -72,7 +72,7 @@ bool target_check_dirty(struct BuildCommand* bc, Target* t) {
 		}
 	}
 
-	if (out_time > in_time) {
+	if (out_time >= in_time) {
 		return false;
 	}
 	

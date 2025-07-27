@@ -293,7 +293,8 @@ void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc
 			da_append_arena(&con->arena, &t->input_name, '/');
 		}
 		da_append_many_arena(&con->arena, &t->input_name, t->name.items, t->name.count);
-		if ((bc->compiler.count == 3 && strncmp(bc->compiler.items, "gcc", 3) == 0) ||
+		if ((bc->compiler.count == 3 && strncmp(bc->compiler.items, "cc", 2) == 0) ||
+			(bc->compiler.count == 3 && strncmp(bc->compiler.items, "gcc", 3) == 0) ||
 			(bc->compiler.count == 5 && strncmp(bc->compiler.items, "clang", 5) == 0)
 		) {
 			da_append_many_arena(&con->arena, &t->input_name, ".c", 2);

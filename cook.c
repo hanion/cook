@@ -1893,7 +1893,7 @@ bool target_check_dirty(struct BuildCommand* bc, Target* t) {
 		}
 	}
 
-	if (out_time > in_time) {
+	if (out_time >= in_time) {
 		return false;
 	}
 	
@@ -2237,7 +2237,8 @@ void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc
 			da_append_arena(&con->arena, &t->input_name, '/');
 		}
 		da_append_many_arena(&con->arena, &t->input_name, t->name.items, t->name.count);
-		if ((bc->compiler.count == 3 && strncmp(bc->compiler.items, "gcc", 3) == 0) ||
+		if ((bc->compiler.count == 3 && strncmp(bc->compiler.items, "cc", 2) == 0) ||
+			(bc->compiler.count == 3 && strncmp(bc->compiler.items, "gcc", 3) == 0) ||
 			(bc->compiler.count == 5 && strncmp(bc->compiler.items, "clang", 5) == 0)
 		) {
 			da_append_many_arena(&con->arena, &t->input_name, ".c", 2);
@@ -2521,10 +2522,10 @@ BuildCommand* build_command_new(Arena* arena) {
 }
 
 BuildCommand build_command_default(void) {
-	static const StringView gcc = { .items = "gcc", .count = 3 };
+	static const StringView cc = { .items = "cc", .count = 3 };
 
 	BuildCommand bc = {0};
-	bc.compiler = gcc;
+	bc.compiler = cc;
 	bc.build_type = BUILD_EXECUTABLE;
 	return bc;
 }

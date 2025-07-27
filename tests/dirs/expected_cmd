@@ -1,3 +1,3 @@
-gcc -c -o barbuild/bar.o barsrc/bar.c 
-gcc -o build/foo src/foo.c barbuild/bar.o
+cc -c -o barbuild/bar.o barsrc/bar.c 
+cc -o build/foo src/foo.c barbuild/bar.o
 
