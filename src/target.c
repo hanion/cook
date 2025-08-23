@@ -1,5 +1,6 @@
 #include "target.h"
 #include "build_command.h"
+#include "da.h"
 #include "executer.h"
 
 StringBuilder target_generate_cmdline_cstr(Arena* arena, struct BuildCommand* bc, Target* t) {
@@ -51,8 +52,10 @@ StringBuilder target_generate_cmdline(Arena* arena, struct BuildCommand* bc, Tar
 	target_string_list_print_flat(arena, &sb, &bc->include_dirs,  "-I", 2);
 	target_string_list_print_flat(arena, &sb, &bc->input_files,   "",   0);
 	target_string_list_print_flat(arena, &sb, &bc->input_objects, "",   0);
-	target_string_list_print_flat(arena, &sb, &bc->library_dirs,  "-L", 2);
-	target_string_list_print_flat(arena, &sb, &bc->library_links, "-l", 2);
+	if (bc->build_type == BUILD_EXECUTABLE || bc->build_type == BUILD_LIB) {
+		target_string_list_print_flat(arena, &sb, &bc->library_dirs,  "-L", 2);
+		target_string_list_print_flat(arena, &sb, &bc->library_links, "-l", 2);
+	}
 	target_string_list_print_flat(arena, &sb, &bc->ldflags,       "",   0);
 
 	return sb;
@@ -72,6 +75,11 @@ bool target_check_dirty(struct BuildCommand* bc, Target* t) {
 		}
 	}
 
+	uint64_t header_time = get_modification_time_sv(sv_from_sb(t->header_file));
+	if (header_time > in_time) {
+		in_time = header_time;
+	}
+
 	if (out_time >= in_time) {
 		return false;
 	}
@@ -87,4 +95,6 @@ bool target_check_dirty(struct BuildCommand* bc, Target* t) {
 
 	return true;
 }
+
+
 

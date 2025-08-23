@@ -18,14 +18,19 @@ static inline int execute_line(const char* line) {
 #endif
 }
 
+Executer executer_new(Arena* arena) {
+	Executer e = {0};
+	e.arena = arena;
+	return e;
+}
 
-void execute_build_command(Arena* arena, BuildCommand* bc) {
+void execute_build_command(Executer* e, BuildCommand* bc, bool execute_lines) {
 	if (!bc || !bc->dirty) {
 		return;
 	}
 
 	// create output dir
-	{
+	if (execute_lines) {
 		StringBuilder sb = {0};
 		da_append_many(&sb, bc->output_dir.items, bc->output_dir.count);
 		da_append(&sb,'\0');
@@ -36,20 +41,54 @@ void execute_build_command(Arena* arena, BuildCommand* bc) {
 	}
 
 	for (size_t i = 0; i < bc->children.count; ++i) {
-		execute_build_command(arena, bc->children.items[i]);
+		execute_build_command(e, bc->children.items[i], execute_lines);
 	}
+
+	bool already_executed = false;
+	for (size_t b = 0; b < e->executed.count; ++b) {
+		if (build_command_is_same(bc, e->executed.items[b])) already_executed = true;
+	}
+	if (already_executed) return;
+	da_append(&e->executed, bc);
+
 	
 	for (size_t i = 0; i < bc->targets.count; ++i) {
 		Target* t = &bc->targets.items[i];
 		if (!t->dirty) continue;
 
-		StringBuilder sb = target_generate_cmdline_cstr(arena, bc, t);
+		bool already_built = false;
+		for (size_t b = 0; b < e->built.count; ++b) {
+			if (target_is_same(t, e->built.items[b])) already_built = true;
+		}
+		if (already_built) continue;
+		da_append(&e->built, t);
 
-		printf("$ %.*s\n", (int)sb.count, sb.items);
-		int ret = execute_line(sb.items);
-		if (ret != 0) break;
+		StringBuilder sb = target_generate_cmdline_cstr(e->arena, bc, t);
+
+		if (execute_lines) {
+			printf("$ %.*s\n", (int)sb.count, sb.items);
+			int ret = execute_line(sb.items);
+			if (ret != 0) break;
+		} else {
+			printf("%.*s\n", (int)sb.count, sb.items);
+		}
 	}
 }
+
+void executer_dry_run(Executer* e, BuildCommand* root) {
+	e->built.count = 0;
+	e->executed.count = 0;
+	execute_build_command(e, root, false);
+}
+
+void executer_execute(Executer* e, BuildCommand* root) {
+	e->built.count = 0;
+	e->executed.count = 0;
+	execute_build_command(e, root, true);
+}
+
+
+
 
 
 #ifdef _WIN32

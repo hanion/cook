@@ -9,6 +9,7 @@ typedef struct {
 	BuildCommand* current_build_command;
 	Statement*    current_statement;
 } Constructor;
+// TODO: keep track of the current Cookfile, for better error messages
 
 Constructor constructor_new(Statement*);
 

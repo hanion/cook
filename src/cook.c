@@ -1,5 +1,6 @@
 #include "cook.h"
 #include "arena.h"
+#include "build_command.h"
 #include "constructor.h"
 #include "executer.h"
 #include "lexer.h"
@@ -42,19 +43,23 @@ int cook(CookOptions op) {
 	Interpreter interpreter = interpreter_new(root_build_command);
 	interpreter_interpret(&interpreter);
 
+	Executer e = executer_new(&interpreter.arena);
+
 	if (op.dry_run) {
 		if (op.verbose > 0) {
 			printf("[cook] build command dump:\n");
 		}
 		build_command_mark_all_children_dirty(root_build_command, true);
-		build_command_dump(&interpreter.arena, root_build_command, stdout, 0);
+		executer_dry_run(&e, root_build_command);
 	} else {
-		execute_build_command(&interpreter.arena, root_build_command);
+		executer_execute(&e, root_build_command);
 	}
 
 	arena_free(&interpreter.arena);
 	arena_free(&parser.arena);
 	arena_free(&constructor.arena);
+	free(e.executed.items);
+	free(e.built.items);
 	return 0;
 }
 

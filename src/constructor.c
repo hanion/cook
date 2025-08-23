@@ -159,7 +159,17 @@ SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = constructor_evaluate(con, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
-				da_append_arena(&con->arena, &bc->input_files, arg.string);
+				// check if its already in input
+				bool exists = false;
+				for (size_t i = 0; i < bc->input_files.count; ++i) {
+					if (bc->input_files.items[i].count == arg.string.count) {
+						if (0 == strncmp(bc->input_files.items[i].items, arg.string.items, arg.string.count)) {
+							exists = true;
+							break;
+						}
+					}
+				}
+				if (!exists) da_append_arena(&con->arena, &bc->input_files, arg.string);
 			}
 		}
 	} else if (callee.method_type == METHOD_COMPILER) {
@@ -293,13 +303,18 @@ void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc
 			da_append_arena(&con->arena, &t->input_name, '/');
 		}
 		da_append_many_arena(&con->arena, &t->input_name, t->name.items, t->name.count);
+		da_append_many_arena(&con->arena, &t->header_file, t->input_name.items, t->input_name.count);
 		if ((bc->compiler.count == 3 && strncmp(bc->compiler.items, "cc", 2) == 0) ||
 			(bc->compiler.count == 3 && strncmp(bc->compiler.items, "gcc", 3) == 0) ||
 			(bc->compiler.count == 5 && strncmp(bc->compiler.items, "clang", 5) == 0)
 		) {
 			da_append_many_arena(&con->arena, &t->input_name, ".c", 2);
+			// TODO: check if it exists first
+			da_append_many_arena(&con->arena, &t->header_file, ".h", 2);
 		} else if (bc->compiler.count == 3 && strncmp(bc->compiler.items, "g++", 3) == 0) {
 			da_append_many_arena(&con->arena, &t->input_name, ".cpp", 4);
+			// TODO: check if it exists first, it could also be .hpp
+			da_append_many_arena(&con->arena, &t->header_file, ".h", 2);
 		}
 
 		t->output_name.count = 0;

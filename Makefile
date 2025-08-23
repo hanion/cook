@@ -2,7 +2,7 @@ CC_LINUX = gcc
 CC_MINGW = x86_64-w64-mingw32-gcc
 CFLAGS   = -Wall -Werror -Wpedantic -g3 -static
 
-SRCS := src/file.c src/token.c src/lexer.c src/arena.c src/parser.c src/expression.c src/statement.c src/interpreter.c src/symbol.c src/build_command.c src/constructor.c src/executer.c src/target.c src/cook.c src/main.c
+SRCS := src/file.c src/token.c src/lexer.c src/arena.c src/parser.c src/expression.c src/statement.c src/symbol.c src/target.c src/build_command.c src/constructor.c src/interpreter.c  src/executer.c src/cook.c src/main.c
 OBJS := $(SRCS:src/%.c=build/%.o)
 
 MINGW_OBJS := $(SRCS:src/%.c=build/m/%.o)
@@ -16,14 +16,14 @@ all: $(MINGW_BIN) $(LINUX_BIN) test
 
 
 $(LINUX_BIN): $(OBJS) | build
-	$(CC_LINUX) $(CFLAGS) $^ -o $@
+	$(CC_LINUX) $(CFLAGS) -o $@ $^
 
 build/%.o: src/%.c | build
 	$(CC_LINUX) $(CFLAGS) -c -o $@ $<
 
 
 $(MINGW_BIN): $(MINGW_OBJS)
-	$(CC_MINGW) $(CFLAGS) $^ -o $@
+	$(CC_MINGW) $(CFLAGS) -o $@ $^
 
 build/m/%.o: src/%.c | build/m
 	$(CC_MINGW) $(CFLAGS) -c -o $@ $<
@@ -44,7 +44,13 @@ run: $(LINUX_BIN)
 	./build/cook --verbose
 
 runm: $(MINGW_BIN)
-	WINEDEBUG=-all wine build/m/cook.exe --verbose
+	WINEDEBUG=-all wine build/m/cook.exe -B --dry-run
 
 test: build/tester $(LINUX_BIN)
 	./build/tester
+
+cook.c: $(SRCS)
+	rm -f ./cook.c # build/cook
+	./amalgamator src/head.h $(SRCS) -I src -o cook.c
+	#gcc -o build/cook cook.c
+

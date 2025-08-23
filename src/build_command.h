@@ -20,12 +20,12 @@ typedef struct {
 	BuildCommand** items;
 	size_t count;
 	size_t capacity;
-} BuildCommandChildren;
+} BuildCommandList;
 
 struct BuildCommand {
 	BuildCommand* parent;
 
-	BuildCommandChildren children;
+	BuildCommandList children;
 
 	StringView compiler;
 
@@ -47,6 +47,9 @@ struct BuildCommand {
 
 	StringView source_dir;
 	StringView output_dir;
+
+	// StringList defines;
+
 	Statement* body;
 	bool dirty;
 	bool marked_clean_explicitly;
@@ -64,5 +67,8 @@ void build_type_print(BuildType type);
 
 void build_command_mark_all_targets_dirty (BuildCommand* bc, bool dirty);
 void build_command_mark_all_children_dirty(BuildCommand* bc, bool dirty);
+
+bool target_is_same(Target* a, Target* b);
+bool build_command_is_same(BuildCommand* a, BuildCommand* b);
 
 

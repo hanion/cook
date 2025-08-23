@@ -23,6 +23,17 @@ void print_usage(const char* pname) {
 int main(int argc, char** argv) {
 	CookOptions op = cook_options_default();
 
+	if (0) {
+		printf("DEBUGGING MODE\n");
+		StringBuilder source = {0};
+		if (access("../Cookfile", F_OK) == 0 && read_entire_file("../Cookfile", &source)) {
+
+			op.source = sv_from_sb(source);
+			cook(op);
+		}
+		return 0;
+	}
+
 	const char* pname = shift(argv, argc);
 	const char* filepath = NULL;
 

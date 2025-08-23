@@ -1650,36 +1650,6 @@ void statement_print(Statement* s, int indent) {
 
 
 
-#include <stdbool.h>
-
-typedef struct Target {
-	StringView name;
-	StringBuilder input_name;
-	StringBuilder output_name;
-	bool dirty;
-} Target;
-
-typedef struct TargetList {
-	Target* items;
-	size_t count;
-	size_t capacity;
-} TargetList;
-
-
-struct BuildCommand;
-StringBuilder target_generate_cmdline_cstr(Arena* arena, struct BuildCommand* bc, Target* t);
-StringBuilder target_generate_cmdline     (Arena* arena, struct BuildCommand* bc, Target* t);
-
-bool target_check_dirty(struct BuildCommand* bc, Target* t);
-
-
-
-
-
-
-
-
-
 
 typedef enum SymbolValueType {
 	SYMBOL_VALUE_NIL = 0,
@@ -1744,7 +1714,39 @@ void symbol_value_print(SymbolValue value, int indent);
 
 MethodType method_extract(StringView sv);
 
+
+
+
+
+
 #include <stdio.h>
+
+
+
+#include <stdbool.h>
+
+typedef struct Target {
+	StringView name;
+	StringBuilder input_name;
+	StringBuilder output_name;
+	StringBuilder header_file;
+	bool dirty;
+	bool built;
+} Target;
+
+typedef struct TargetList {
+	Target* items;
+	size_t count;
+	size_t capacity;
+} TargetList;
+
+
+struct BuildCommand;
+StringBuilder target_generate_cmdline_cstr(Arena* arena, struct BuildCommand* bc, Target* t);
+StringBuilder target_generate_cmdline     (Arena* arena, struct BuildCommand* bc, Target* t);
+
+bool target_check_dirty(struct BuildCommand* bc, Target* t);
+
 
 
 
@@ -1761,12 +1763,12 @@ typedef struct {
 	BuildCommand** items;
 	size_t count;
 	size_t capacity;
-} BuildCommandChildren;
+} BuildCommandList;
 
 struct BuildCommand {
 	BuildCommand* parent;
 
-	BuildCommandChildren children;
+	BuildCommandList children;
 
 	StringView compiler;
 
@@ -1789,6 +1791,8 @@ struct BuildCommand {
 	StringView source_dir;
 	StringView output_dir;
 
+	// StringList defines;
+
 	Statement* body;
 	bool dirty;
 	bool marked_clean_explicitly;
@@ -1807,15 +1811,98 @@ void build_type_print(BuildType type);
 void build_command_mark_all_targets_dirty (BuildCommand* bc, bool dirty);
 void build_command_mark_all_children_dirty(BuildCommand* bc, bool dirty);
 
+bool target_is_same(Target* a, Target* b);
+bool build_command_is_same(BuildCommand* a, BuildCommand* b);
+
+
+
+#include <stdio.h>
+
+
+// TODO: define some constants
+// COOK_VERSION=0.0.1
+// GCC_VERSION (get it from gcc itself) ...
+// DEBUG/RELEASE/MIN_SIZE_REL/DIST
+Environment* environment_new(Arena* arena) {
+	Environment* env = (Environment*)arena_alloc(arena, sizeof(Environment));
+	return env;
+}
+
+const char* symbol_value_type_name_cstr(SymbolValueType type) {
+	switch (type) {
+		#define CASE(T) case T: return #T;
+		CASE(SYMBOL_VALUE_NIL)
+		CASE(SYMBOL_VALUE_INT)
+		CASE(SYMBOL_VALUE_FLOAT)
+		CASE(SYMBOL_VALUE_STRING)
+		CASE(SYMBOL_VALUE_METHOD)
+		CASE(SYMBOL_VALUE_BUILD_COMMAND)
+		#undef CASE
+	}
+	return "!!! SYMBOL VALUE TYPE INVALID";
+}
+
+void symbol_value_print(SymbolValue value, int indent) {
+	for (int i = 0; i < indent; ++i) {
+		putchar(' ');
+	}
+	printf("symbol ");
+	switch (value.type) {
+		case SYMBOL_VALUE_NIL:    printf("nil"); break;
+		case SYMBOL_VALUE_INT:    printf("int: %d", value.integer); break;
+		case SYMBOL_VALUE_FLOAT:  printf("float: %f", value.floating); break;
+		case SYMBOL_VALUE_STRING: printf("string: %.*s", (int)value.string.count, value.string.items); break;
+		case SYMBOL_VALUE_METHOD: printf("method: %.*s", (int)value.string.count, value.string.items); break;
+		case SYMBOL_VALUE_BUILD_COMMAND:
+			printf("build command:\n\t\t");
+			build_command_print(value.bc, indent + 2);
+			break;
+		default: break;
+	}
+	printf("\n");
+}
+
+MethodType method_extract(StringView sv) {
+	if (strncmp("build",       sv.items, sv.count) == 0) return METHOD_BUILD;
+	if (strncmp("compiler",    sv.items, sv.count) == 0) return METHOD_COMPILER;
+	if (strncmp("input",       sv.items, sv.count) == 0) return METHOD_INPUT;
+	if (strncmp("cflags",      sv.items, sv.count) == 0) return METHOD_CFLAGS;
+	if (strncmp("ldflags",     sv.items, sv.count) == 0) return METHOD_LDFLAGS;
+	if (strncmp("source_dir",  sv.items, sv.count) == 0) return METHOD_SOURCE_DIR;
+	if (strncmp("output_dir",  sv.items, sv.count) == 0) return METHOD_OUTPUT_DIR;
+	if (strncmp("include_dir", sv.items, sv.count) == 0) return METHOD_INCLUDE_DIR;
+	if (strncmp("library_dir", sv.items, sv.count) == 0) return METHOD_LIBRARY_DIR;
+	if (strncmp("link",        sv.items, sv.count) == 0) return METHOD_LINK;
+	if (strncmp("dirty",       sv.items, sv.count) == 0) return METHOD_DIRTY;
+	if (strncmp("mark_clean",  sv.items, sv.count) == 0) return METHOD_MARK_CLEAN;
+	if (strncmp("echo",        sv.items, sv.count) == 0) return METHOD_ECHO;
+
+	return METHOD_NONE;
+}
 
 
 
 
-
-void execute_build_command(Arena* arena, BuildCommand* bc);
 
 #include <stdint.h>
 #include <stdbool.h>
+
+typedef struct {
+	Target** items;
+	size_t count;
+	size_t capacity;
+} BuiltList;
+
+typedef struct {
+	BuildCommandList executed;
+	BuiltList built;
+	Arena* arena;
+} Executer;
+
+Executer executer_new(Arena* arena);
+void executer_dry_run(Executer* e, BuildCommand* root);
+void executer_execute(Executer* e, BuildCommand* root);
+
 
 uint64_t get_modification_time_sv(StringView path);
 uint64_t get_modification_time(const char *path_cstr);
@@ -1872,8 +1959,10 @@ StringBuilder target_generate_cmdline(Arena* arena, struct BuildCommand* bc, Tar
 	target_string_list_print_flat(arena, &sb, &bc->include_dirs,  "-I", 2);
 	target_string_list_print_flat(arena, &sb, &bc->input_files,   "",   0);
 	target_string_list_print_flat(arena, &sb, &bc->input_objects, "",   0);
-	target_string_list_print_flat(arena, &sb, &bc->library_dirs,  "-L", 2);
-	target_string_list_print_flat(arena, &sb, &bc->library_links, "-l", 2);
+	if (bc->build_type == BUILD_EXECUTABLE || bc->build_type == BUILD_LIB) {
+		target_string_list_print_flat(arena, &sb, &bc->library_dirs,  "-L", 2);
+		target_string_list_print_flat(arena, &sb, &bc->library_links, "-l", 2);
+	}
 	target_string_list_print_flat(arena, &sb, &bc->ldflags,       "",   0);
 
 	return sb;
@@ -1891,6 +1980,11 @@ bool target_check_dirty(struct BuildCommand* bc, Target* t) {
 		if (time != 0 && time > in_time) {
 			in_time = time;
 		}
+	}
+
+	uint64_t header_time = get_modification_time_sv(sv_from_sb(t->header_file));
+	if (header_time > in_time) {
+		in_time = header_time;
 	}
 
 	if (out_time >= in_time) {
@@ -1913,6 +2007,263 @@ bool target_check_dirty(struct BuildCommand* bc, Target* t) {
 
 
 
+
+#define INDENT_MULTIPLIER 4
+
+BuildCommand* build_command_new(Arena* arena) {
+	BuildCommand* bc = (BuildCommand*)arena_alloc(arena, sizeof(BuildCommand));
+	*bc = build_command_default();
+	return bc;
+}
+
+BuildCommand build_command_default(void) {
+	static const StringView cc = { .items = "cc", .count = 3 };
+
+	BuildCommand bc = {0};
+	bc.compiler = cc;
+	bc.build_type = BUILD_EXECUTABLE;
+	return bc;
+}
+
+BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent) {
+	if (!parent) {
+		return NULL;
+	}
+	BuildCommand* bc = build_command_new(arena);
+
+	bc->parent = parent;
+	bc->compiler = parent->compiler;
+	bc->include_dirs = parent->include_dirs;
+	bc->library_dirs = parent->library_dirs;
+	bc->library_links = parent->library_links;
+	bc->cflags = parent->cflags;
+	bc->ldflags = parent->ldflags;
+	bc->source_dir = parent->source_dir;
+	bc->output_dir = parent->output_dir;
+
+	if (parent->parent != NULL) {
+		bc->build_type = BUILD_OBJECT;
+	}
+
+	da_append_arena(arena, &parent->children, bc);
+	return bc;
+}
+
+
+inline static void indent_label(int indent, const char* label) {
+	printf("%*s%-14s: ", indent * INDENT_MULTIPLIER, "", label);
+}
+inline static void indent_label_sv(int indent, StringView sv) {
+	printf("%*s%-14.*s: ", indent * INDENT_MULTIPLIER, "", (int)sv.count, sv.items);
+}
+inline static void string_list_print_big(int indent, const char* label, const StringList* list) {
+	if (list->count == 0) return;
+
+	indent_label(indent, label);
+	for (size_t i = 0; i < list->count; ++i) {
+		const StringView* sv = &list->items[i];
+		printf("%.*s", (int)sv->count, sv->items);
+		if (i + 1 < list->count) {
+			printf(", ");
+		}
+	}
+	printf("\n");
+}
+
+inline static void target_list_print_pretty(size_t indent, TargetList list) {
+	if (list.count == 0) return;
+
+	indent_label(indent, "targets");
+	printf("\n");
+
+	for (size_t i = 0; i <  list.count; ++i) {
+		Target* t = &list.items[i];
+		indent_label_sv(indent+1, t->name);
+		printf("input: %-25.*s ", (int)t->input_name.count, t->input_name.items);
+		printf("output: %-25.*s ", (int)t->output_name.count, t->output_name.items);
+		if (t->dirty) printf("[dirty]");
+		printf("\n");
+	}
+}
+
+void build_command_print(BuildCommand* bc, size_t indent) {
+	if (!bc) {
+		return;
+	}
+	size_t ni = indent + 1;
+
+	indent_label(ni, "build command");
+	if (bc->dirty) printf("[dirty]");
+	printf("\n");
+
+
+	if (bc->compiler.count > 0) {
+		indent_label(ni, "compiler");
+		printf("%.*s\n", (int)bc->compiler.count, bc->compiler.items);
+	}
+
+	indent_label(ni, "build type");
+	build_type_print(bc->build_type);
+	printf("\n");
+
+	target_list_print_pretty(ni, bc->targets);
+	string_list_print_big(ni, "input files", &bc->input_files);
+	string_list_print_big(ni, "input objects", &bc->input_objects);
+	string_list_print_big(ni, "include dirs", &bc->include_dirs);
+	string_list_print_big(ni, "include files", &bc->include_files);
+	string_list_print_big(ni, "library dirs", &bc->library_dirs);
+	string_list_print_big(ni, "library links", &bc->library_links);
+	string_list_print_big(ni, "cflags", &bc->cflags);
+	string_list_print_big(ni, "ldflags", &bc->ldflags);
+
+	if (bc->source_dir.count > 0) {
+		indent_label(ni, "source dir");
+		printf("%.*s\n", (int)bc->source_dir.count, bc->source_dir.items);
+	}
+	if (bc->output_dir.count > 0) {
+		indent_label(ni, "output dir");
+		printf("%.*s\n", (int)bc->output_dir.count, bc->output_dir.items);
+	}
+
+	if (bc->children.count > 0) {
+		indent_label(ni, "children");
+		printf("%zu\n", bc->children.count);
+		for (size_t i = 0; i < bc->children.count; ++i) {
+			indent_label(indent + 2, "child");
+			printf("%zu\n", i);
+			build_command_print(bc->children.items[i], indent + 2);
+		}
+	}
+}
+
+
+
+void build_command_dump(Arena* arena, BuildCommand* bc, FILE* stream, size_t target_to_build) {
+	if (!bc || !bc->dirty) {
+		return;
+	}
+
+	// skip root bc
+	if (!bc->parent) {
+		for (size_t i = 0; i < bc->children.count; ++i) {
+			build_command_dump(arena, bc->children.items[i], stream, 0);
+		}
+		return;
+	}
+
+	// recurse into children
+	for (size_t i = 0; i < bc->children.count; ++i) {
+		build_command_dump(arena, bc->children.items[i], stream, 0);
+	}
+
+	if (bc->targets.count == 0) {
+		return;
+	}
+	if (bc->targets.count <= target_to_build) {
+		return;
+	}
+
+	Target* t = &bc->targets.items[target_to_build];
+	if (!t->built) {
+		StringBuilder sb = target_generate_cmdline(arena, bc, t);
+		printf("%.*s\n", (int)sb.count, sb.items);
+		t->built = true;
+	}
+
+	if (target_to_build == 0) {
+		for (size_t i = 1; i < bc->targets.count; ++i) {
+			build_command_dump(arena, bc, stream, i);
+		}
+	}
+}
+
+void build_type_print(BuildType type) {
+	switch (type) {
+		case BUILD_EXECUTABLE: printf("executable"); return;
+		case BUILD_OBJECT:     printf("object");     return;
+		case BUILD_LIB:        printf("lib");        return;
+	}
+}
+
+void build_command_mark_all_targets_dirty(BuildCommand* bc, bool dirty) {
+	if (!bc || (bc->marked_clean_explicitly==dirty)) return;
+	for (size_t i = 0; i < bc->targets.count; ++i) {
+		bc->targets.items[i].dirty = dirty;
+	}
+}
+void build_command_mark_all_children_dirty(BuildCommand* bc, bool dirty) {
+	if (!bc || (bc->marked_clean_explicitly==dirty)) return;
+	bc->dirty = dirty;
+	build_command_mark_all_targets_dirty(bc, dirty);
+	for (size_t i = 0; i < bc->children.count; ++i) {
+		build_command_mark_all_children_dirty(bc->children.items[i], dirty);
+	}
+}
+
+bool bc_string_view_same(StringView* a, StringView* b) {
+	if (a->count != b->count) return false;
+	if (strncmp(a->items, b->items, a->count) != 0) return false;
+	return true;
+}
+bool bc_string_builder_same(StringBuilder* a, StringBuilder* b) {
+	if (a->count != b->count) return false;
+	if (strncmp(a->items, b->items, a->count) != 0) return false;
+	return true;
+}
+bool bc_string_list_same(StringList* a, StringList* b) {
+	if (a->count != b->count) return false;
+	for (size_t i = 0; i < a->count; ++i) {
+		if (!bc_string_view_same(&a->items[i], &b->items[i])) return false;
+	}
+	return true;
+}
+
+
+bool target_is_same(Target* a, Target* b) {
+	if (!bc_string_view_same(&a->name, &b->name)) return false;
+	if (!bc_string_builder_same(&a->input_name,  &b->input_name)) return false;
+	if (!bc_string_builder_same(&a->output_name, &b->output_name)) return false;
+	if (!bc_string_builder_same(&a->header_file, &b->header_file)) return false;
+	return true;
+}
+
+
+
+bool build_command_is_same(BuildCommand* a, BuildCommand* b) {
+	if (a->children.count != b->children.count) return false;
+	// NOTE: not sure about this, what if the order is different?
+	for (size_t i = 0; i < a->children.count; ++i) {
+		BuildCommand* abc = a->children.items[i];
+		BuildCommand* bbc = b->children.items[i];
+		if (!build_command_is_same(abc, bbc)) return false;
+	}
+
+	if (a->build_type != b->build_type) return false;
+
+	if (a->targets.count != b->targets.count) return false;
+	for (size_t i = 0; i < a->targets.count; ++i) {
+		if (!target_is_same(&a->targets.items[i], &b->targets.items[i])) return false;
+	}
+
+	if (!bc_string_view_same(&a->compiler,      &b->compiler))      return false;
+	if (!bc_string_view_same(&a->source_dir,    &b->source_dir))    return false;
+	if (!bc_string_view_same(&a->output_dir,    &b->output_dir))    return false;
+	if (!bc_string_list_same(&a->input_files,   &b->input_files))   return false;
+	if (!bc_string_list_same(&a->input_objects, &b->input_objects)) return false;
+	if (!bc_string_list_same(&a->include_dirs,  &b->include_dirs))  return false;
+	if (!bc_string_list_same(&a->include_files, &b->include_files)) return false;
+	if (!bc_string_list_same(&a->library_dirs,  &b->library_dirs))  return false;
+	if (!bc_string_list_same(&a->library_links, &b->library_links)) return false;
+	if (!bc_string_list_same(&a->cflags,        &b->cflags))        return false;
+	if (!bc_string_list_same(&a->ldflags,       &b->ldflags))       return false;
+
+	return true;
+}
+
+
+
+
+
 typedef struct {
 	Arena arena;
 	bool had_error;
@@ -1920,6 +2271,7 @@ typedef struct {
 	BuildCommand* current_build_command;
 	Statement*    current_statement;
 } Constructor;
+// TODO: keep track of the current Cookfile, for better error messages
 
 Constructor constructor_new(Statement*);
 
@@ -2103,7 +2455,17 @@ SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
 		for (size_t i = 0; i < e->argc; ++i) {
 			SymbolValue arg = constructor_evaluate(con, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
-				da_append_arena(&con->arena, &bc->input_files, arg.string);
+				// check if its already in input
+				bool exists = false;
+				for (size_t i = 0; i < bc->input_files.count; ++i) {
+					if (bc->input_files.items[i].count == arg.string.count) {
+						if (0 == strncmp(bc->input_files.items[i].items, arg.string.items, arg.string.count)) {
+							exists = true;
+							break;
+						}
+					}
+				}
+				if (!exists) da_append_arena(&con->arena, &bc->input_files, arg.string);
 			}
 		}
 	} else if (callee.method_type == METHOD_COMPILER) {
@@ -2237,13 +2599,18 @@ void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc
 			da_append_arena(&con->arena, &t->input_name, '/');
 		}
 		da_append_many_arena(&con->arena, &t->input_name, t->name.items, t->name.count);
+		da_append_many_arena(&con->arena, &t->header_file, t->input_name.items, t->input_name.count);
 		if ((bc->compiler.count == 3 && strncmp(bc->compiler.items, "cc", 2) == 0) ||
 			(bc->compiler.count == 3 && strncmp(bc->compiler.items, "gcc", 3) == 0) ||
 			(bc->compiler.count == 5 && strncmp(bc->compiler.items, "clang", 5) == 0)
 		) {
 			da_append_many_arena(&con->arena, &t->input_name, ".c", 2);
+			// TODO: check if it exists first
+			da_append_many_arena(&con->arena, &t->header_file, ".h", 2);
 		} else if (bc->compiler.count == 3 && strncmp(bc->compiler.items, "g++", 3) == 0) {
 			da_append_many_arena(&con->arena, &t->input_name, ".cpp", 4);
+			// TODO: check if it exists first, it could also be .hpp
+			da_append_many_arena(&con->arena, &t->header_file, ".h", 2);
 		}
 
 		t->output_name.count = 0;
@@ -2447,258 +2814,134 @@ SymbolValue interpreter_lookup_variable(Interpreter* in, StringView sv, Expressi
 
 
 
+
+
 #include <stdio.h>
+#include <string.h>
+#include <unistd.h>
 
+#define CMD_LINE_MAX 2000
 
-// TODO: define some constants
-// COOK_VERSION=0.0.1
-// GCC_VERSION (get it from gcc itself) ...
-// DEBUG/RELEASE/MIN_SIZE_REL/DIST
-Environment* environment_new(Arena* arena) {
-	Environment* env = (Environment*)arena_alloc(arena, sizeof(Environment));
-	return env;
+static inline int execute_line(const char* line) {
+#ifdef _WIN32
+		char full_command[CMD_LINE_MAX + 16];
+		snprintf(full_command, sizeof(full_command), "cmd /C \"%s\"", line);
+		return system(full_command);
+#else
+	return system(line);
+#endif
 }
 
-const char* symbol_value_type_name_cstr(SymbolValueType type) {
-	switch (type) {
-		#define CASE(T) case T: return #T;
-		CASE(SYMBOL_VALUE_NIL)
-		CASE(SYMBOL_VALUE_INT)
-		CASE(SYMBOL_VALUE_FLOAT)
-		CASE(SYMBOL_VALUE_STRING)
-		CASE(SYMBOL_VALUE_METHOD)
-		CASE(SYMBOL_VALUE_BUILD_COMMAND)
-		#undef CASE
-	}
-	return "!!! SYMBOL VALUE TYPE INVALID";
+Executer executer_new(Arena* arena) {
+	Executer e = {0};
+	e.arena = arena;
+	return e;
 }
 
-void symbol_value_print(SymbolValue value, int indent) {
-	for (int i = 0; i < indent; ++i) {
-		putchar(' ');
-	}
-	printf("symbol ");
-	switch (value.type) {
-		case SYMBOL_VALUE_NIL:    printf("nil"); break;
-		case SYMBOL_VALUE_INT:    printf("int: %d", value.integer); break;
-		case SYMBOL_VALUE_FLOAT:  printf("float: %f", value.floating); break;
-		case SYMBOL_VALUE_STRING: printf("string: %.*s", (int)value.string.count, value.string.items); break;
-		case SYMBOL_VALUE_METHOD: printf("method: %.*s", (int)value.string.count, value.string.items); break;
-		case SYMBOL_VALUE_BUILD_COMMAND:
-			printf("build command:\n\t\t");
-			build_command_print(value.bc, indent + 2);
-			break;
-		default: break;
-	}
-	printf("\n");
-}
-
-MethodType method_extract(StringView sv) {
-	if (strncmp("build",       sv.items, sv.count) == 0) return METHOD_BUILD;
-	if (strncmp("compiler",    sv.items, sv.count) == 0) return METHOD_COMPILER;
-	if (strncmp("input",       sv.items, sv.count) == 0) return METHOD_INPUT;
-	if (strncmp("cflags",      sv.items, sv.count) == 0) return METHOD_CFLAGS;
-	if (strncmp("ldflags",     sv.items, sv.count) == 0) return METHOD_LDFLAGS;
-	if (strncmp("source_dir",  sv.items, sv.count) == 0) return METHOD_SOURCE_DIR;
-	if (strncmp("output_dir",  sv.items, sv.count) == 0) return METHOD_OUTPUT_DIR;
-	if (strncmp("include_dir", sv.items, sv.count) == 0) return METHOD_INCLUDE_DIR;
-	if (strncmp("library_dir", sv.items, sv.count) == 0) return METHOD_LIBRARY_DIR;
-	if (strncmp("link",        sv.items, sv.count) == 0) return METHOD_LINK;
-	if (strncmp("dirty",       sv.items, sv.count) == 0) return METHOD_DIRTY;
-	if (strncmp("mark_clean",  sv.items, sv.count) == 0) return METHOD_MARK_CLEAN;
-	if (strncmp("echo",        sv.items, sv.count) == 0) return METHOD_ECHO;
-
-	return METHOD_NONE;
-}
-
-
-
-#define INDENT_MULTIPLIER 4
-
-BuildCommand* build_command_new(Arena* arena) {
-	BuildCommand* bc = (BuildCommand*)arena_alloc(arena, sizeof(BuildCommand));
-	*bc = build_command_default();
-	return bc;
-}
-
-BuildCommand build_command_default(void) {
-	static const StringView cc = { .items = "cc", .count = 3 };
-
-	BuildCommand bc = {0};
-	bc.compiler = cc;
-	bc.build_type = BUILD_EXECUTABLE;
-	return bc;
-}
-
-BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent) {
-	if (!parent) {
-		return NULL;
-	}
-	BuildCommand* bc = build_command_new(arena);
-
-	bc->parent = parent;
-	bc->compiler = parent->compiler;
-	bc->include_dirs = parent->include_dirs;
-	bc->library_dirs = parent->library_dirs;
-	bc->cflags = parent->cflags;
-	bc->ldflags = parent->ldflags;
-	bc->source_dir = parent->source_dir;
-	bc->output_dir = parent->output_dir;
-
-	if (parent->parent != NULL) {
-		bc->build_type = BUILD_OBJECT;
-	}
-
-	da_append_arena(arena, &parent->children, bc);
-	return bc;
-}
-
-
-inline static void indent_label(int indent, const char* label) {
-	printf("%*s%-14s: ", indent * INDENT_MULTIPLIER, "", label);
-}
-inline static void indent_label_sv(int indent, StringView sv) {
-	printf("%*s%-14.*s: ", indent * INDENT_MULTIPLIER, "", (int)sv.count, sv.items);
-}
-inline static void string_list_print_big(int indent, const char* label, const StringList* list) {
-	if (list->count == 0) return;
-
-	indent_label(indent, label);
-	for (size_t i = 0; i < list->count; ++i) {
-		const StringView* sv = &list->items[i];
-		printf("%.*s", (int)sv->count, sv->items);
-		if (i + 1 < list->count) {
-			printf(", ");
-		}
-	}
-	printf("\n");
-}
-
-inline static void target_list_print_pretty(size_t indent, TargetList list) {
-	if (list.count == 0) return;
-
-	indent_label(indent, "targets");
-	printf("\n");
-
-	for (size_t i = 0; i <  list.count; ++i) {
-		Target* t = &list.items[i];
-		indent_label_sv(indent+1, t->name);
-		printf("input: %-25.*s ", (int)t->input_name.count, t->input_name.items);
-		printf("output: %-25.*s ", (int)t->output_name.count, t->output_name.items);
-		if (t->dirty) printf("[dirty]");
-		printf("\n");
-	}
-}
-
-void build_command_print(BuildCommand* bc, size_t indent) {
-	if (!bc) {
-		return;
-	}
-	size_t ni = indent + 1;
-
-	indent_label(ni, "build command");
-	if (bc->dirty) printf("[dirty]");
-	printf("\n");
-
-
-	if (bc->compiler.count > 0) {
-		indent_label(ni, "compiler");
-		printf("%.*s\n", (int)bc->compiler.count, bc->compiler.items);
-	}
-
-	indent_label(ni, "build type");
-	build_type_print(bc->build_type);
-	printf("\n");
-
-	target_list_print_pretty(ni, bc->targets);
-	string_list_print_big(ni, "input files", &bc->input_files);
-	string_list_print_big(ni, "input objects", &bc->input_objects);
-	string_list_print_big(ni, "include dirs", &bc->include_dirs);
-	string_list_print_big(ni, "include files", &bc->include_files);
-	string_list_print_big(ni, "library dirs", &bc->library_dirs);
-	string_list_print_big(ni, "library links", &bc->library_links);
-	string_list_print_big(ni, "cflags", &bc->cflags);
-	string_list_print_big(ni, "ldflags", &bc->ldflags);
-
-	if (bc->source_dir.count > 0) {
-		indent_label(ni, "source dir");
-		printf("%.*s\n", (int)bc->source_dir.count, bc->source_dir.items);
-	}
-	if (bc->output_dir.count > 0) {
-		indent_label(ni, "output dir");
-		printf("%.*s\n", (int)bc->output_dir.count, bc->output_dir.items);
-	}
-
-	if (bc->children.count > 0) {
-		indent_label(ni, "children");
-		printf("%zu\n", bc->children.count);
-		for (size_t i = 0; i < bc->children.count; ++i) {
-			indent_label(indent + 2, "child");
-			printf("%zu\n", i);
-			build_command_print(bc->children.items[i], indent + 2);
-		}
-	}
-}
-
-
-
-void build_command_dump(Arena* arena, BuildCommand* bc, FILE* stream, size_t target_to_build) {
+void execute_build_command(Executer* e, BuildCommand* bc, bool execute_lines) {
 	if (!bc || !bc->dirty) {
 		return;
 	}
 
-	// skip root bc
-	if (!bc->parent) {
-		for (size_t i = 0; i < bc->children.count; ++i) {
-			build_command_dump(arena, bc->children.items[i], stream, 0);
+	// create output dir
+	if (execute_lines) {
+		StringBuilder sb = {0};
+		da_append_many(&sb, bc->output_dir.items, bc->output_dir.count);
+		da_append(&sb,'\0');
+		if (access(sb.items, F_OK) != 0) {
+			MKDIR(sb.items);
 		}
-		return;
+		free(sb.items);
 	}
 
-	// recurse into children
 	for (size_t i = 0; i < bc->children.count; ++i) {
-		build_command_dump(arena, bc->children.items[i], stream, 0);
+		execute_build_command(e, bc->children.items[i], execute_lines);
 	}
 
-	if (bc->targets.count == 0) {
-		return;
+	bool already_executed = false;
+	for (size_t b = 0; b < e->executed.count; ++b) {
+		if (build_command_is_same(bc, e->executed.items[b])) already_executed = true;
 	}
-	if (bc->targets.count <= target_to_build) {
-		return;
-	}
+	if (already_executed) return;
+	da_append(&e->executed, bc);
 
-	StringBuilder sb = target_generate_cmdline(arena, bc, &bc->targets.items[target_to_build]);
-
-	printf("%.*s\n", (int)sb.count, sb.items);
-
-	if (target_to_build == 0) {
-		for (size_t i = 1; i < bc->targets.count; ++i) {
-			build_command_dump(arena, bc, stream, i);
-		}
-	}
-}
-
-void build_type_print(BuildType type) {
-	switch (type) {
-		case BUILD_EXECUTABLE: printf("executable"); return;
-		case BUILD_OBJECT:     printf("object");     return;
-		case BUILD_LIB:        printf("lib");        return;
-	}
-}
-
-void build_command_mark_all_targets_dirty(BuildCommand* bc, bool dirty) {
-	if (!bc || (bc->marked_clean_explicitly==dirty)) return;
+	
 	for (size_t i = 0; i < bc->targets.count; ++i) {
-		bc->targets.items[i].dirty = dirty;
+		Target* t = &bc->targets.items[i];
+		if (!t->dirty) continue;
+
+		bool already_built = false;
+		for (size_t b = 0; b < e->built.count; ++b) {
+			if (target_is_same(t, e->built.items[b])) already_built = true;
+		}
+		if (already_built) continue;
+		da_append(&e->built, t);
+
+		StringBuilder sb = target_generate_cmdline_cstr(e->arena, bc, t);
+
+		if (execute_lines) {
+			printf("$ %.*s\n", (int)sb.count, sb.items);
+			int ret = execute_line(sb.items);
+			if (ret != 0) break;
+		} else {
+			printf("%.*s\n", (int)sb.count, sb.items);
+		}
 	}
 }
-void build_command_mark_all_children_dirty(BuildCommand* bc, bool dirty) {
-	if (!bc || (bc->marked_clean_explicitly==dirty)) return;
-	bc->dirty = dirty;
-	build_command_mark_all_targets_dirty(bc, dirty);
-	for (size_t i = 0; i < bc->children.count; ++i) {
-		build_command_mark_all_children_dirty(bc->children.items[i], dirty);
+
+void executer_dry_run(Executer* e, BuildCommand* root) {
+	e->built.count = 0;
+	e->executed.count = 0;
+	execute_build_command(e, root, false);
+}
+
+void executer_execute(Executer* e, BuildCommand* root) {
+	e->built.count = 0;
+	e->executed.count = 0;
+	execute_build_command(e, root, true);
+}
+
+
+
+
+
+#ifdef _WIN32
+	#include <windows.h>
+	#include <sys/types.h>
+	#include <sys/stat.h>
+#else
+	#include <sys/stat.h>
+	#include <time.h>
+#endif
+
+uint64_t get_modification_time(const char *path_cstr) {
+#ifdef _WIN32
+	WIN32_FILE_ATTRIBUTE_DATA attr;
+	if (!GetFileAttributesExA(path_cstr, GetFileExInfoStandard, &attr)) {
+		return 0;
 	}
+
+	FILETIME ft = attr.ftLastWriteTime;
+	ULARGE_INTEGER ull;
+	ull.LowPart  = ft.dwLowDateTime;
+	ull.HighPart = ft.dwHighDateTime;
+
+	return (ull.QuadPart - 116444736000000000ULL) / 10000000ULL;
+#else
+	struct stat st;
+	if (stat(path_cstr, &st) != 0) {
+		return 0;
+	}
+	return (uint64_t)st.st_mtime;
+#endif
+}
+
+uint64_t get_modification_time_sv(StringView path) {
+	char buf[512];
+	assert(path.count < sizeof(buf));
+	memcpy(buf, path.items, path.count);
+	buf[path.count] = '\0';
+	return get_modification_time(buf);
 }
 
 
@@ -2721,6 +2964,7 @@ static inline CookOptions cook_options_default(void) {
 }
 
 int cook(CookOptions op);
+
 
 
 
@@ -2766,114 +3010,26 @@ int cook(CookOptions op) {
 	Interpreter interpreter = interpreter_new(root_build_command);
 	interpreter_interpret(&interpreter);
 
+	Executer e = executer_new(&interpreter.arena);
+
 	if (op.dry_run) {
 		if (op.verbose > 0) {
 			printf("[cook] build command dump:\n");
 		}
 		build_command_mark_all_children_dirty(root_build_command, true);
-		build_command_dump(&interpreter.arena, root_build_command, stdout, 0);
+		executer_dry_run(&e, root_build_command);
 	} else {
-		execute_build_command(&interpreter.arena, root_build_command);
+		executer_execute(&e, root_build_command);
 	}
 
 	arena_free(&interpreter.arena);
 	arena_free(&parser.arena);
 	arena_free(&constructor.arena);
+	free(e.executed.items);
+	free(e.built.items);
 	return 0;
 }
 
-
-
-
-
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-
-#define CMD_LINE_MAX 2000
-
-static inline int execute_line(const char* line) {
-#ifdef _WIN32
-		char full_command[CMD_LINE_MAX + 16];
-		snprintf(full_command, sizeof(full_command), "cmd /C \"%s\"", line);
-		return system(full_command);
-#else
-	return system(line);
-#endif
-}
-
-
-void execute_build_command(Arena* arena, BuildCommand* bc) {
-	if (!bc || !bc->dirty) {
-		return;
-	}
-
-	// create output dir
-	{
-		StringBuilder sb = {0};
-		da_append_many(&sb, bc->output_dir.items, bc->output_dir.count);
-		da_append(&sb,'\0');
-		if (access(sb.items, F_OK) != 0) {
-			MKDIR(sb.items);
-		}
-		free(sb.items);
-	}
-
-	for (size_t i = 0; i < bc->children.count; ++i) {
-		execute_build_command(arena, bc->children.items[i]);
-	}
-	
-	for (size_t i = 0; i < bc->targets.count; ++i) {
-		Target* t = &bc->targets.items[i];
-		if (!t->dirty) continue;
-
-		StringBuilder sb = target_generate_cmdline_cstr(arena, bc, t);
-
-		printf("$ %.*s\n", (int)sb.count, sb.items);
-		int ret = execute_line(sb.items);
-		if (ret != 0) break;
-	}
-}
-
-
-#ifdef _WIN32
-	#include <windows.h>
-	#include <sys/types.h>
-	#include <sys/stat.h>
-#else
-	#include <sys/stat.h>
-	#include <time.h>
-#endif
-
-uint64_t get_modification_time(const char *path_cstr) {
-#ifdef _WIN32
-	WIN32_FILE_ATTRIBUTE_DATA attr;
-	if (!GetFileAttributesExA(path_cstr, GetFileExInfoStandard, &attr)) {
-		return 0;
-	}
-
-	FILETIME ft = attr.ftLastWriteTime;
-	ULARGE_INTEGER ull;
-	ull.LowPart  = ft.dwLowDateTime;
-	ull.HighPart = ft.dwHighDateTime;
-
-	return (ull.QuadPart - 116444736000000000ULL) / 10000000ULL;
-#else
-	struct stat st;
-	if (stat(path_cstr, &st) != 0) {
-		return 0;
-	}
-	return (uint64_t)st.st_mtime;
-#endif
-}
-
-uint64_t get_modification_time_sv(StringView path) {
-	char buf[512];
-	assert(path.count < sizeof(buf));
-	memcpy(buf, path.items, path.count);
-	buf[path.count] = '\0';
-	return get_modification_time(buf);
-}
 
 
 #include <stdio.h>

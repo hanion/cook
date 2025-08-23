@@ -28,6 +28,7 @@ BuildCommand* build_command_inherit(Arena* arena, BuildCommand* parent) {
 	bc->compiler = parent->compiler;
 	bc->include_dirs = parent->include_dirs;
 	bc->library_dirs = parent->library_dirs;
+	bc->library_links = parent->library_links;
 	bc->cflags = parent->cflags;
 	bc->ldflags = parent->ldflags;
 	bc->source_dir = parent->source_dir;
@@ -155,9 +156,12 @@ void build_command_dump(Arena* arena, BuildCommand* bc, FILE* stream, size_t tar
 		return;
 	}
 
-	StringBuilder sb = target_generate_cmdline(arena, bc, &bc->targets.items[target_to_build]);
-
-	printf("%.*s\n", (int)sb.count, sb.items);
+	Target* t = &bc->targets.items[target_to_build];
+	if (!t->built) {
+		StringBuilder sb = target_generate_cmdline(arena, bc, t);
+		printf("%.*s\n", (int)sb.count, sb.items);
+		t->built = true;
+	}
 
 	if (target_to_build == 0) {
 		for (size_t i = 1; i < bc->targets.count; ++i) {
@@ -188,3 +192,64 @@ void build_command_mark_all_children_dirty(BuildCommand* bc, bool dirty) {
 		build_command_mark_all_children_dirty(bc->children.items[i], dirty);
 	}
 }
+
+bool bc_string_view_same(StringView* a, StringView* b) {
+	if (a->count != b->count) return false;
+	if (strncmp(a->items, b->items, a->count) != 0) return false;
+	return true;
+}
+bool bc_string_builder_same(StringBuilder* a, StringBuilder* b) {
+	if (a->count != b->count) return false;
+	if (strncmp(a->items, b->items, a->count) != 0) return false;
+	return true;
+}
+bool bc_string_list_same(StringList* a, StringList* b) {
+	if (a->count != b->count) return false;
+	for (size_t i = 0; i < a->count; ++i) {
+		if (!bc_string_view_same(&a->items[i], &b->items[i])) return false;
+	}
+	return true;
+}
+
+
+bool target_is_same(Target* a, Target* b) {
+	if (!bc_string_view_same(&a->name, &b->name)) return false;
+	if (!bc_string_builder_same(&a->input_name,  &b->input_name)) return false;
+	if (!bc_string_builder_same(&a->output_name, &b->output_name)) return false;
+	if (!bc_string_builder_same(&a->header_file, &b->header_file)) return false;
+	return true;
+}
+
+
+
+bool build_command_is_same(BuildCommand* a, BuildCommand* b) {
+	if (a->children.count != b->children.count) return false;
+	// NOTE: not sure about this, what if the order is different?
+	for (size_t i = 0; i < a->children.count; ++i) {
+		BuildCommand* abc = a->children.items[i];
+		BuildCommand* bbc = b->children.items[i];
+		if (!build_command_is_same(abc, bbc)) return false;
+	}
+
+	if (a->build_type != b->build_type) return false;
+
+	if (a->targets.count != b->targets.count) return false;
+	for (size_t i = 0; i < a->targets.count; ++i) {
+		if (!target_is_same(&a->targets.items[i], &b->targets.items[i])) return false;
+	}
+
+	if (!bc_string_view_same(&a->compiler,      &b->compiler))      return false;
+	if (!bc_string_view_same(&a->source_dir,    &b->source_dir))    return false;
+	if (!bc_string_view_same(&a->output_dir,    &b->output_dir))    return false;
+	if (!bc_string_list_same(&a->input_files,   &b->input_files))   return false;
+	if (!bc_string_list_same(&a->input_objects, &b->input_objects)) return false;
+	if (!bc_string_list_same(&a->include_dirs,  &b->include_dirs))  return false;
+	if (!bc_string_list_same(&a->include_files, &b->include_files)) return false;
+	if (!bc_string_list_same(&a->library_dirs,  &b->library_dirs))  return false;
+	if (!bc_string_list_same(&a->library_links, &b->library_links)) return false;
+	if (!bc_string_list_same(&a->cflags,        &b->cflags))        return false;
+	if (!bc_string_list_same(&a->ldflags,       &b->ldflags))       return false;
+
+	return true;
+}
+

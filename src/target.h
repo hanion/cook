@@ -7,7 +7,9 @@ typedef struct Target {
 	StringView name;
 	StringBuilder input_name;
 	StringBuilder output_name;
+	StringBuilder header_file;
 	bool dirty;
+	bool built;
 } Target;
 
 typedef struct TargetList {
