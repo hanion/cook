@@ -89,11 +89,44 @@
 */
 
 
-
-#include <assert.h>
+#include <stdbool.h>
+#include <errno.h>
+#include <sys/stat.h>
 #include <stddef.h>
+#include <ctype.h>
 #include <stdlib.h>
+#include <stdarg.h>
+#include <assert.h>
+#include <stdint.h>
+#include <signal.h>
 #include <string.h>
+#include <stdio.h>
+
+#ifdef _WIN32
+	#include <windows.h>
+	#include <sys/types.h>
+	#include <sys/stat.h>
+#else
+	#include <sys/stat.h>
+	#include <time.h>
+#endif
+
+#ifdef _WIN32
+	#define MKDIR(path) mkdir(path)
+#else
+	#include <unistd.h>
+	#define MKDIR(path) mkdir(path, 0777)
+#endif
+
+#define T_RETN(tt, n) { token.type = tt; token.str.count = n; l->cursor += n; return token; }
+#define T_RET(tt) T_RETN(tt,1)
+#define T_RET_IF_NEXT(c, tt)  if (lexer_check_next(l, c)) { T_RETN(tt,2); }
+
+#define ARENA_DEFAULT_CAPACITY (640 * 1000)
+
+#define INDENT_MULTIPLIER 4
+
+#define shift(xs, xs_sz) (assert((xs_sz) > 0), (xs_sz)--, *(xs)++)
 
 #define da_reserve(da, expected_capacity)                                                  \
 	do {                                                                                   \
@@ -187,8 +220,6 @@ static inline StringView sv_from_sb(StringBuilder sb) {
 	};
 }
 
-#include <stdbool.h>
-#include <sys/stat.h>
 
 bool read_entire_file(const char *filepath_cstr, StringBuilder *sb);
 bool write_to_file   (const char *filepath_cstr, StringBuilder *sb);
@@ -197,20 +228,6 @@ const char* get_filename(const char* filepath_cstr);
 
 bool ends_with(const char* cstr, const char* w);
 
-
-#ifdef _WIN32
-	#define MKDIR(path) mkdir(path)
-#else
-	#include <unistd.h>
-	#define MKDIR(path) mkdir(path, 0777)
-#endif
-
-#include <assert.h>
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
 
 
 bool read_entire_file(const char *filepath_cstr, StringBuilder *sb) {
@@ -283,8 +300,7 @@ bool ends_with(const char* cstr, const char* w) {
 }
 
 
-#include <stddef.h>
-#include <stdbool.h>
+
 
 typedef enum {
 	TOKEN_END = 0,
@@ -358,9 +374,7 @@ bool token_equals(Token token, const char* cstr);
 
 void token_print(Token t, int indent);
 
-#include <ctype.h>
-#include <stdio.h>
-#include <string.h>
+
 
 const char* token_name_cstr(Token token) {
 	return token_type_name_cstr(token.type);
@@ -493,8 +507,7 @@ Token lexer_peek_next (Lexer* l);
 
 void lexer_dump(Lexer* l);
 
-#include <assert.h>
-#include <ctype.h>
+
 
 
 Lexer lexer_new(StringView sv) {
@@ -626,9 +639,7 @@ Token lexer_next_token(Lexer* l) {
 	}
 
 	switch (l->content[l->cursor]) {
-		#define T_RETN(tt, n) { token.type = tt; token.str.count = n; l->cursor += n; return token; }
-		#define T_RET(tt) T_RETN(tt,1)
-		#define T_RET_IF_NEXT(c, tt)  if (lexer_check_next(l, c)) { T_RETN(tt,2); }
+
 
 		case '(': T_RET(TOKEN_OPEN_PAREN);
 		case ')': T_RET(TOKEN_CLOSE_PAREN);
@@ -727,9 +738,7 @@ void lexer_dump(Lexer* l) {
 }
 
 
-#include <stdlib.h>
-#include <string.h>
-#include <stdarg.h>
+
 
 typedef struct Region {
 	struct Region *next;
@@ -740,7 +749,7 @@ typedef struct Region {
 
 Region *region_new(size_t capacity);
 
-#define ARENA_DEFAULT_CAPACITY (640 * 1000)
+
 
 typedef struct {
     Region *first;
@@ -755,11 +764,7 @@ void arena_free(Arena *arena);
 void arena_summary(Arena *arena);
 
 
-#include <assert.h>
-#include <stdint.h>
-#include <string.h>
-#include <stdio.h>
-#include <stdbool.h>
+
 
 Region *region_new(size_t capacity) {
 	const size_t region_size = sizeof(Region) + capacity;
@@ -881,7 +886,7 @@ void arena_summary(Arena *arena) {
 
 
 
-#include <stdio.h>
+
 
 typedef enum ExpressionType {
 	EXPR_ASSIGNMENT,
@@ -1082,7 +1087,7 @@ void parser_dump(Parser* p);
 
 
 
-#include <stdio.h>
+
 
 
 Parser parser_new(Lexer* lexer) {
@@ -1719,11 +1724,7 @@ MethodType method_extract(StringView sv);
 
 
 
-#include <stdio.h>
 
-
-
-#include <stdbool.h>
 
 typedef struct Target {
 	StringView name;
@@ -1816,7 +1817,7 @@ bool build_command_is_same(BuildCommand* a, BuildCommand* b);
 
 
 
-#include <stdio.h>
+
 
 
 // TODO: define some constants
@@ -1884,8 +1885,6 @@ MethodType method_extract(StringView sv) {
 
 
 
-#include <stdint.h>
-#include <stdbool.h>
 
 typedef struct {
 	Target** items;
@@ -1990,7 +1989,7 @@ bool target_check_dirty(struct BuildCommand* bc, Target* t) {
 	if (out_time >= in_time) {
 		return false;
 	}
-	
+
 	t->dirty = true;
 	bc->dirty = true;
 
@@ -2008,7 +2007,7 @@ bool target_check_dirty(struct BuildCommand* bc, Target* t) {
 
 
 
-#define INDENT_MULTIPLIER 4
+
 
 BuildCommand* build_command_new(Arena* arena) {
 	BuildCommand* bc = (BuildCommand*)arena_alloc(arena, sizeof(BuildCommand));
@@ -2299,8 +2298,7 @@ void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc
 
 
 
-#include <signal.h>
-#include <stdint.h>
+
 
 static const SymbolValue nill = { .type = SYMBOL_VALUE_NIL };
 
@@ -2442,7 +2440,7 @@ SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
 		constructor_error(con, callee_token, "callee is nil");
 		return nill;
 	}
-	
+
 	if (callee.type != SYMBOL_VALUE_METHOD) {
 		constructor_error(con, callee_token, "callee is not a method");
 		return nill;
@@ -2673,10 +2671,7 @@ void interpreter_expand_build_command_targets(Interpreter* in, BuildCommand* bc)
 
 
 
-#include <signal.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
+
 
 static const SymbolValue nil = { .type = SYMBOL_VALUE_NIL };
 
@@ -2783,7 +2778,7 @@ SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 		interpreter_error(in, callee_token, "callee is nil");
 		return nil;
 	}
-	
+
 	if (callee.type != SYMBOL_VALUE_METHOD) {
 		interpreter_error(in, callee_token, "callee is not a method");
 		return nil;
@@ -2816,9 +2811,7 @@ SymbolValue interpreter_lookup_variable(Interpreter* in, StringView sv, Expressi
 
 
 
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
+
 
 #define CMD_LINE_MAX 2000
 
@@ -2865,7 +2858,7 @@ void execute_build_command(Executer* e, BuildCommand* bc, bool execute_lines) {
 	if (already_executed) return;
 	da_append(&e->executed, bc);
 
-	
+
 	for (size_t i = 0; i < bc->targets.count; ++i) {
 		Target* t = &bc->targets.items[i];
 		if (!t->dirty) continue;
@@ -2905,14 +2898,7 @@ void executer_execute(Executer* e, BuildCommand* root) {
 
 
 
-#ifdef _WIN32
-	#include <windows.h>
-	#include <sys/types.h>
-	#include <sys/stat.h>
-#else
-	#include <sys/stat.h>
-	#include <time.h>
-#endif
+
 
 uint64_t get_modification_time(const char *path_cstr) {
 #ifdef _WIN32
@@ -2946,7 +2932,7 @@ uint64_t get_modification_time_sv(StringView path) {
 
 
 
-#include <stdbool.h>
+
 
 typedef struct CookOptions {
 	StringView source;
@@ -3032,8 +3018,7 @@ int cook(CookOptions op) {
 
 
 
-#include <stdio.h>
-#include <unistd.h>
+
 
 void print_usage(const char* pname) {
 	fprintf(stderr,
@@ -3050,7 +3035,7 @@ void print_usage(const char* pname) {
 	);
 }
 
-#define shift(xs, xs_sz) (assert((xs_sz) > 0), (xs_sz)--, *(xs)++)
+
 
 int main(int argc, char** argv) {
 	CookOptions op = cook_options_default();
