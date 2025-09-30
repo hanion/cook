@@ -13,6 +13,7 @@ static const char* tests[] = {
 	"nested",
 	"multiple_target_names",
 	"dirty",
+	"order",
 };
 
 

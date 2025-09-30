@@ -1897,11 +1897,12 @@ typedef struct {
 	BuildCommandList executed;
 	BuiltList built;
 	Arena* arena;
-} Executer;
+} Runner;
 
-Executer executer_new(Arena* arena);
-void executer_dry_run(Executer* e, BuildCommand* root);
-void executer_execute(Executer* e, BuildCommand* root);
+Runner runner_new(Arena* arena);
+void runner_dry_run(Runner* e, BuildCommand* root);
+void runner_execute(Runner* e, BuildCommand* root);
+
 
 
 uint64_t get_modification_time_sv(StringView path);
@@ -1909,6 +1910,7 @@ uint64_t get_modification_time(const char *path_cstr);
 
 
 
+#include <stdint.h>
 
 StringBuilder target_generate_cmdline_cstr(Arena* arena, struct BuildCommand* bc, Target* t) {
 	StringBuilder sb = target_generate_cmdline(arena, bc, t);
@@ -2265,35 +2267,96 @@ bool build_command_is_same(BuildCommand* a, BuildCommand* b) {
 
 
 typedef struct {
+	bool had_error;
+	Environment** environment;
+} Evaluator;
+
+Evaluator evaluator_new(Environment** env);
+
+SymbolValue evaluator_evaluate(Evaluator* ev, Expression* e);
+
+SymbolValue evaluator_lookup_variable(Evaluator* ev, Expression* e);
+
+
+static const SymbolValue nill = { .type = SYMBOL_VALUE_NIL };
+
+Evaluator evaluator_new(Environment** env) {
+	return (Evaluator){
+		.environment = env
+	};
+}
+
+
+SymbolValue evaluator_evaluate(Evaluator* ev, Expression* e) {
+	if (!e) { return nill; }
+
+	switch (e->type) {
+		case EXPR_VARIABLE: return evaluator_lookup_variable(ev, e);
+		//case EXPR_CALL: ...
+		case EXPR_LITERAL_STRING: {
+			return (SymbolValue){
+				.type = SYMBOL_VALUE_STRING,
+				.string = e->literal_string.str,
+			};
+		}
+		default: break;
+	}
+	return nill;
+}
+
+
+SymbolValue evaluator_lookup_variable(Evaluator* ev, Expression* e) {
+	// TODO: symbol map in ev, check the variable if exists return value
+	StringView sv = e->variable.name.str;
+	SymbolValue val = {0};
+	val.string.items = sv.items;
+	val.string.count = sv.count;
+	val.type = SYMBOL_VALUE_STRING;
+
+	MethodType m = method_extract(sv);
+	if (m != METHOD_NONE) {
+		val.type = SYMBOL_VALUE_METHOD;
+		val.method_type = m;
+	}
+
+	return val;
+}
+
+
+
+
+
+typedef struct {
 	Arena arena;
 	bool had_error;
 	Environment*  current_environment;
 	BuildCommand* current_build_command;
 	Statement*    current_statement;
-} Constructor;
+	Evaluator     evaluator;
+} Planner;
 // TODO: keep track of the current Cookfile, for better error messages
 
-Constructor constructor_new(Statement*);
+Planner planner_new(Statement*);
 
-BuildCommand* constructor_construct_build_command(Constructor*);
+BuildCommand* planner_construct_build_command(Planner*);
 
-void constructor_analyze(Constructor*, BuildCommand*);
+void planner_analyze(Planner*, BuildCommand*);
 
 
-void constructor_error(Constructor* con, Token token, const char* error_cstr);
+void planner_error(Planner* con, Token token, const char* error_cstr);
 
-SymbolValue constructor_evaluate(Constructor* con, Expression* e);
-SymbolValue constructor_execute (Constructor* con, Statement*  s);
+SymbolValue planner_evaluate(Planner* con, Expression* e);
+SymbolValue planner_execute (Planner* con, Statement*  s);
 
-SymbolValue constructor_lookup_variable(Constructor* con, StringView sv, Expression* e);
+SymbolValue planner_lookup_variable(Planner* con, StringView sv, Expression* e);
 
-SymbolValue constructor_interpret_block       (Constructor* con, StatementBlock*  s);
-SymbolValue constructor_interpret_call        (Constructor* con, ExpressionCall*  e);
-SymbolValue constructor_interpret_chain       (Constructor* con, ExpressionChain* e);
-SymbolValue constructor_interpret_description (Constructor* con, StatementDescription* s);
-SymbolValue constructor_interpret_method_build(Constructor* con, ExpressionCall* e);
+SymbolValue planner_interpret_block       (Planner* con, StatementBlock*  s);
+SymbolValue planner_interpret_call        (Planner* con, ExpressionCall*  e);
+SymbolValue planner_interpret_chain       (Planner* con, ExpressionChain* e);
+SymbolValue planner_interpret_description (Planner* con, StatementDescription* s);
+SymbolValue planner_interpret_method_build(Planner* con, ExpressionCall* e);
 
-void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc);
+void planner_expand_build_command_targets(Planner* con, BuildCommand* bc);
 
 
 
@@ -2304,32 +2367,33 @@ void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc
 
 static const SymbolValue nill = { .type = SYMBOL_VALUE_NIL };
 
-Constructor constructor_new(Statement* root_statement) {
-	Constructor con = {0};
+Planner planner_new(Statement* root_statement) {
+	Planner con = {0};
 	con.current_statement = root_statement;
 	con.current_environment = environment_new(&con.arena);
 	con.current_build_command = build_command_new(&con.arena);
+	con.evaluator = evaluator_new(&con.current_environment);
 	return con;
 }
 
-BuildCommand* constructor_construct_build_command(Constructor* con) {
+BuildCommand* planner_construct_build_command(Planner* con) {
 	Statement* root = con->current_statement;
 	con->current_build_command->body = root;
 
-	constructor_execute(con, root);
-	constructor_expand_build_command_targets(con, con->current_build_command);
-	constructor_analyze(con, con->current_build_command);
+	planner_execute(con, root);
+	planner_expand_build_command_targets(con, con->current_build_command);
+	planner_analyze(con, con->current_build_command);
 	con->current_build_command->dirty = true; // root build command is always dirty
 	return con->current_build_command;
 }
 
 
-void constructor_analyze(Constructor* con, BuildCommand* bc) {
+void planner_analyze(Planner* con, BuildCommand* bc) {
 	if (!con || !bc) return;
 
 	bool dirty_child = false;
 	for (size_t i = 0; i < bc->children.count; ++i) {
-		constructor_analyze(con, bc->children.items[i]);
+		planner_analyze(con, bc->children.items[i]);
 		if (bc->children.items[i]->dirty) {
 			dirty_child = true;
 		}
@@ -2351,9 +2415,9 @@ void constructor_analyze(Constructor* con, BuildCommand* bc) {
 	}
 }
 
-void constructor_error(Constructor* con, Token token, const char* error_cstr) {
+void planner_error(Planner* con, Token token, const char* error_cstr) {
 	con->had_error = true;
-	fprintf(stderr,"[ERROR][constructor] %zu:%zu %s\n\t%s %.*s\n",
+	fprintf(stderr,"[ERROR][planner] %zu:%zu %s\n\t%s %.*s\n",
 		 token.line + 1, token.column,
 		 error_cstr, token_name_cstr(token), (int)token.str.count, token.str.items);
 	raise(1);
@@ -2361,46 +2425,41 @@ void constructor_error(Constructor* con, Token token, const char* error_cstr) {
 
 
 
-SymbolValue constructor_evaluate(Constructor* con, Expression* e) {
+SymbolValue planner_evaluate(Planner* con, Expression* e) {
 	if (!e) { return nill; }
 
 	switch (e->type) {
-		case EXPR_VARIABLE: return constructor_lookup_variable(con, e->variable.name.str, e);
-		case EXPR_CALL:     return constructor_interpret_call(con, &e->call);
-		case EXPR_CHAIN:    return constructor_interpret_chain(con, &e->chain);
-		case EXPR_LITERAL_STRING: {
-			return (SymbolValue){
-				.type = SYMBOL_VALUE_STRING,
-				.string = e->literal_string.str,
-			};
-		}
+		case EXPR_LITERAL_STRING:
+		case EXPR_VARIABLE: return evaluator_evaluate(&con->evaluator,e);
+		case EXPR_CALL:     return planner_interpret_call(con, &e->call);
+		case EXPR_CHAIN:    return planner_interpret_chain(con, &e->chain);
 		default: break;
 	}
 	return nill;
 }
 
-SymbolValue constructor_execute(Constructor* con, Statement* s) {
+SymbolValue planner_execute(Planner* con, Statement* s) {
 	con->current_statement = s;
 	switch (s->type) {
-		case STATEMENT_BLOCK:       return constructor_interpret_block(con, &s->block);
-		case STATEMENT_DESCRIPTION: return constructor_interpret_description(con, &s->description);
-		case STATEMENT_EXPRESSION:  return constructor_evaluate(con, s->expression.expression);
+		case STATEMENT_BLOCK:       return planner_interpret_block(con, &s->block);
+		case STATEMENT_DESCRIPTION: return planner_interpret_description(con, &s->description);
+		case STATEMENT_EXPRESSION:  return planner_evaluate(con, s->expression.expression);
 	}
 	return nill;
 }
 
-SymbolValue constructor_interpret_block(Constructor* con, StatementBlock*  s) {
+SymbolValue planner_interpret_block(Planner* con, StatementBlock*  s) {
 	for (size_t i = 0; i < s->statement_count; ++i) {
-		constructor_execute(con, s->statements[i]);
+		planner_execute(con, s->statements[i]);
 	}
 	return nill;
 }
 
-SymbolValue constructor_interpret_description(Constructor* con, StatementDescription* s) {
+SymbolValue planner_interpret_description(Planner* con, StatementDescription* s) {
 	BuildCommand* enclosing = con->current_build_command;
 	Statement* outer = con->current_statement;
 
-	SymbolValue left = constructor_execute(con, s->statement);
+	SymbolValue left = planner_execute(con, s->statement);
 
 	if (left.type == SYMBOL_VALUE_BUILD_COMMAND) {
 		con->current_build_command = left.bc;
@@ -2408,28 +2467,28 @@ SymbolValue constructor_interpret_description(Constructor* con, StatementDescrip
 	}
 
 	for (size_t i = 0; i < s->block->block.statement_count; ++i) {
-		constructor_execute(con, s->block->block.statements[i]);
+		planner_execute(con, s->block->block.statements[i]);
 	}
 
 	con->current_build_command = enclosing;
 	return left;
 }
 
-SymbolValue constructor_interpret_chain(Constructor* con, ExpressionChain* e) {
+SymbolValue planner_interpret_chain(Planner* con, ExpressionChain* e) {
 	Statement* outer = con->current_statement;
-	SymbolValue left = constructor_evaluate(con, e->left);
+	SymbolValue left = planner_evaluate(con, e->left);
 	BuildCommand* enclosing = con->current_build_command;
 	if (left.type == SYMBOL_VALUE_BUILD_COMMAND) {
 		con->current_build_command = left.bc;
 		con->current_build_command->body = outer;
 	}
-	constructor_evaluate(con, e->right);
+	planner_evaluate(con, e->right);
 	con->current_build_command = enclosing;
 	return left;
 }
 
-SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
-	SymbolValue callee = constructor_evaluate(con, e->callee);
+SymbolValue planner_interpret_call(Planner* con, ExpressionCall* e) {
+	SymbolValue callee = planner_evaluate(con, e->callee);
 	Token callee_token = {
 		.type = TOKEN_IDENTIFIER,
 		.str.count = callee.string.count,
@@ -2439,21 +2498,21 @@ SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
 	};
 
 	if (callee.type == SYMBOL_VALUE_NIL) {
-		constructor_error(con, callee_token, "callee is nil");
+		planner_error(con, callee_token, "callee is nil");
 		return nill;
 	}
 	
 	if (callee.type != SYMBOL_VALUE_METHOD) {
-		constructor_error(con, callee_token, "callee is not a method");
+		planner_error(con, callee_token, "callee is not a method");
 		return nill;
 	}
 
 	if (callee.method_type == METHOD_BUILD) {
-		return constructor_interpret_method_build(con, e);
+		return planner_interpret_method_build(con, e);
 	} else if (callee.method_type == METHOD_INPUT) {
 		BuildCommand* bc = con->current_build_command;
 		for (size_t i = 0; i < e->argc; ++i) {
-			SymbolValue arg = constructor_evaluate(con, e->args[i]);
+			SymbolValue arg = planner_evaluate(con, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
 				// check if its already in input
 				bool exists = false;
@@ -2470,16 +2529,16 @@ SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
 		}
 	} else if (callee.method_type == METHOD_COMPILER) {
 		if (e->argc != 1) {
-			constructor_error(con, e->token, "compiler method takes only 1 argument");
+			planner_error(con, e->token, "compiler method takes only 1 argument");
 			return nill;
 		}
 		BuildCommand* bc = con->current_build_command;
-		SymbolValue arg = constructor_evaluate(con, e->args[0]);
+		SymbolValue arg = planner_evaluate(con, e->args[0]);
 		bc->compiler = arg.string;
 	} else if (callee.method_type == METHOD_CFLAGS) {
 		BuildCommand* bc = con->current_build_command;
 		for (size_t i = 0; i < e->argc; ++i) {
-			SymbolValue arg = constructor_evaluate(con, e->args[i]);
+			SymbolValue arg = planner_evaluate(con, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
 				da_append_arena(&con->arena, &bc->cflags, arg.string);
 			}
@@ -2487,31 +2546,31 @@ SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
 	} else if (callee.method_type == METHOD_LDFLAGS) {
 		BuildCommand* bc = con->current_build_command;
 		for (size_t i = 0; i < e->argc; ++i) {
-			SymbolValue arg = constructor_evaluate(con, e->args[i]);
+			SymbolValue arg = planner_evaluate(con, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
 				da_append_arena(&con->arena, &bc->ldflags, arg.string);
 			}
 		}
 	} else if (callee.method_type == METHOD_SOURCE_DIR) {
 		if (e->argc != 1) {
-			constructor_error(con, e->token, "source_dir method takes only 1 argument");
+			planner_error(con, e->token, "source_dir method takes only 1 argument");
 			return nill;
 		}
 		BuildCommand* bc = con->current_build_command;
-		SymbolValue arg = constructor_evaluate(con, e->args[0]);
+		SymbolValue arg = planner_evaluate(con, e->args[0]);
 		bc->source_dir = arg.string;
 	} else if (callee.method_type == METHOD_OUTPUT_DIR) {
 		if (e->argc != 1) {
-			constructor_error(con, e->token, "output_dir method takes only 1 argument");
+			planner_error(con, e->token, "output_dir method takes only 1 argument");
 			return nill;
 		}
 		BuildCommand* bc = con->current_build_command;
-		SymbolValue arg = constructor_evaluate(con, e->args[0]);
+		SymbolValue arg = planner_evaluate(con, e->args[0]);
 		bc->output_dir = arg.string;
 	} else if (callee.method_type == METHOD_INCLUDE_DIR) {
 		BuildCommand* bc = con->current_build_command;
 		for (size_t i = 0; i < e->argc; ++i) {
-			SymbolValue arg = constructor_evaluate(con, e->args[i]);
+			SymbolValue arg = planner_evaluate(con, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
 				da_append_arena(&con->arena, &bc->include_dirs, arg.string);
 			}
@@ -2519,7 +2578,7 @@ SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
 	} else if (callee.method_type == METHOD_LIBRARY_DIR) {
 		BuildCommand* bc = con->current_build_command;
 		for (size_t i = 0; i < e->argc; ++i) {
-			SymbolValue arg = constructor_evaluate(con, e->args[i]);
+			SymbolValue arg = planner_evaluate(con, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
 				da_append_arena(&con->arena, &bc->library_dirs, arg.string);
 			}
@@ -2527,7 +2586,7 @@ SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
 	} else if (callee.method_type == METHOD_LINK) {
 		BuildCommand* bc = con->current_build_command;
 		for (size_t i = 0; i < e->argc; ++i) {
-			SymbolValue arg = constructor_evaluate(con, e->args[i]);
+			SymbolValue arg = planner_evaluate(con, e->args[i]);
 			if (arg.type == SYMBOL_VALUE_STRING) {
 				da_append_arena(&con->arena, &bc->library_links, arg.string);
 			}
@@ -2546,23 +2605,7 @@ SymbolValue constructor_interpret_call(Constructor* con, ExpressionCall* e) {
 	return nill;
 }
 
-
-SymbolValue constructor_lookup_variable(Constructor* con, StringView sv, Expression* e) {
-	SymbolValue val = {0};
-	val.string.items = sv.items;
-	val.string.count = sv.count;
-	val.type = SYMBOL_VALUE_STRING;
-
-	MethodType m = method_extract(sv);
-	if (m != METHOD_NONE) {
-		val.type = SYMBOL_VALUE_METHOD;
-		val.method_type = m;
-	}
-
-	return val;
-}
-
-SymbolValue constructor_interpret_method_build(Constructor* con, ExpressionCall* e) {
+SymbolValue planner_interpret_method_build(Planner* con, ExpressionCall* e) {
 	Statement* outer = con->current_statement;
 	BuildCommand* enclosing = con->current_build_command;
 	BuildCommand* bc = build_command_inherit(&con->arena, con->current_build_command);
@@ -2570,7 +2613,7 @@ SymbolValue constructor_interpret_method_build(Constructor* con, ExpressionCall*
 	con->current_build_command->body = con->current_statement;
 
 	for (size_t i = 0; i < e->argc; ++i) {
-		SymbolValue arg = constructor_evaluate(con, e->args[i]);
+		SymbolValue arg = planner_evaluate(con, e->args[i]);
 		if (arg.type == SYMBOL_VALUE_STRING) {
 			Target t = { .name = arg.string };
 			da_append_arena(&con->arena, &bc->targets, t);
@@ -2589,7 +2632,7 @@ SymbolValue constructor_interpret_method_build(Constructor* con, ExpressionCall*
 
 // NOTE: we have to wait for all the descriptions to end to run this,
 // otherwise we might miss the compiler change
-void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc) {
+void planner_expand_build_command_targets(Planner* con, BuildCommand* bc) {
 	for (size_t i = 0; i < bc->targets.count; ++i) {
 		Target* t = &bc->targets.items[i];
 
@@ -2630,11 +2673,9 @@ void constructor_expand_build_command_targets(Constructor* con, BuildCommand* bc
 	}
 
 	for (size_t i = 0; i < bc->children.count; ++i) {
-		constructor_expand_build_command_targets(con, bc->children.items[i]);
+		planner_expand_build_command_targets(con, bc->children.items[i]);
 	}
 }
-
-
 
 
 
@@ -2645,28 +2686,16 @@ typedef struct {
 	Arena arena;
 	int verbose;
 	bool had_error;
+	bool dry_run;
 	BuildCommand* root_build_command;
 	Environment* current_environment;
-} Interpreter;
+	Evaluator evaluator;
+	Runner runner;
+} Executor;
 
-Interpreter interpreter_new(BuildCommand*);
-void interpreter_interpret (Interpreter*);
+Executor executor_new(BuildCommand* bc, bool dry_run);
+void executor_run(Executor*);
 
-void interpreter_error(Interpreter* in, Token token, const char* error_cstr);
-
-SymbolValue interpreter_evaluate (Interpreter* in, Expression* e);
-SymbolValue interpreter_execute  (Interpreter* in, Statement*  s);
-SymbolValue interpret_block      (Interpreter* in, StatementBlock*  s);
-SymbolValue interpret_call       (Interpreter* in, ExpressionCall*  e);
-SymbolValue interpret_chain      (Interpreter* in, ExpressionChain* e);
-SymbolValue interpret_description(Interpreter* in, StatementDescription* s);
-
-SymbolValue interpreter_lookup_variable(Interpreter* in, StringView sv, Expression* e);
-
-
-SymbolValue interpret_method_build(Interpreter* in, ExpressionCall* e);
-
-void interpreter_expand_build_command_targets(Interpreter* in, BuildCommand* bc);
 
 
 
@@ -2680,23 +2709,38 @@ void interpreter_expand_build_command_targets(Interpreter* in, BuildCommand* bc)
 
 static const SymbolValue nil = { .type = SYMBOL_VALUE_NIL };
 
+SymbolValue execute_call       (Executor* ex, ExpressionCall* e);
+SymbolValue execute_chain      (Executor* ex, ExpressionChain* e);
+SymbolValue executor_execute   (Executor* ex, Statement* s);
+SymbolValue execute_description(Executor* ex, StatementDescription* s);
+SymbolValue execute_block      (Executor* ex, StatementBlock* s);
 
-Interpreter interpreter_new(BuildCommand* bc) {
-	Interpreter in = {0};
-	in.root_build_command = bc;
-	in.current_environment = environment_new(&in.arena);
-	return in;
+
+
+
+
+Executor executor_new(BuildCommand* bc, bool dry_run) {
+	Executor ex = {};
+	ex.root_build_command = bc;
+	ex.dry_run = dry_run;
+	ex.current_environment = environment_new(&ex.arena);
+	ex.evaluator = evaluator_new(&ex.current_environment);
+	ex.runner = runner_new(&ex.arena);
+	return ex;
 }
 
-void interpreter_interpret(Interpreter* in) {
-	assert(in->root_build_command && in->root_build_command->body && "root bc body must not be null");
 
-	interpreter_execute(in, in->root_build_command->body);
+void executor_run(Executor* ex) {
+	assert(ex->root_build_command && ex->root_build_command->body && "root bc body must not be null");
+	executor_execute(ex, ex->root_build_command->body);
 }
 
-void interpreter_error(Interpreter* in, Token token, const char* error_cstr) {
-	in->had_error = true;
-	fprintf(stderr,"[ERROR][interpreter] %zu:%zu %s\n\t%s %.*s\n",
+
+
+
+void executeer_error(Executor* ex, Token token, const char* error_cstr) {
+	ex->had_error = true;
+	fprintf(stderr,"[ERROR][Executor] %zu:%zu %s\n\t%s %.*s\n",
 		 token.line + 1, token.column,
 		 error_cstr, token_name_cstr(token), (int)token.str.count, token.str.items);
 	raise(1);
@@ -2704,19 +2748,14 @@ void interpreter_error(Interpreter* in, Token token, const char* error_cstr) {
 
 
 
-SymbolValue interpreter_evaluate(Interpreter* in, Expression* e) {
+SymbolValue executor_evaluate(Executor* ex, Expression* e) {
 	if (!e) { return (SymbolValue){0}; }
 
 	switch (e->type) {
-		case EXPR_VARIABLE: return interpreter_lookup_variable(in, e->variable.name.str, e);
-		case EXPR_CALL:     return interpret_call(in, &e->call);
-		case EXPR_CHAIN:    return interpret_chain(in, &e->chain);
-		case EXPR_LITERAL_STRING: {
-			return (SymbolValue){
-				.type = SYMBOL_VALUE_STRING,
-				.string = e->literal_string.str,
-			};
-		}
+		case EXPR_LITERAL_STRING:
+		case EXPR_VARIABLE: return evaluator_evaluate(&ex->evaluator, e);
+		case EXPR_CALL:     return execute_call(ex, &e->call);
+		case EXPR_CHAIN:    return execute_chain(ex, &e->chain);
 		default: break;
 	}
 	return (SymbolValue){0};
@@ -2724,53 +2763,63 @@ SymbolValue interpreter_evaluate(Interpreter* in, Expression* e) {
 
 BuildCommand* statement_find_attached_build_command(Statement* s, BuildCommand* bc) {
 	if (!bc || !s || !bc->body) return NULL;
-	if (bc->body == s)          return bc;
+
+	if (bc->body == s) return bc;
+
 	for (size_t i = 0; i < bc->children.count; ++i) {
 		BuildCommand* bcc = statement_find_attached_build_command(s, bc->children.items[i]);
 		if (bcc) return bcc;
 	}
+
 	return NULL;
 }
 
-SymbolValue interpreter_execute(Interpreter* in, Statement* s) {
-	BuildCommand* bc = statement_find_attached_build_command(s, in->root_build_command);
+SymbolValue executor_execute(Executor* ex, Statement* s) {
+	BuildCommand* bc = statement_find_attached_build_command(s, ex->root_build_command);
 	if (bc && !bc->dirty && bc->parent != NULL) return nil;
-	//if (bc != in->root_build_command) return nil;
 
 	switch (s->type) {
-		case STATEMENT_BLOCK:       interpret_block(in, &s->block); break;
-		case STATEMENT_DESCRIPTION: interpret_description(in, &s->description); break;
-		case STATEMENT_EXPRESSION:  interpreter_evaluate(in, s->expression.expression); break;
+		case STATEMENT_EXPRESSION:  executor_evaluate(ex, s->expression.expression); break;
+		case STATEMENT_BLOCK:       execute_block(ex, &s->block); break;
+		case STATEMENT_DESCRIPTION: execute_description(ex, &s->description); break;
+	}
+	
+	if (bc) {
+		if (ex->dry_run) {
+			runner_dry_run(&ex->runner, bc);
+		} else {
+			runner_execute(&ex->runner, bc);
+		}
 	}
 
 	return nil;
 }
 
-SymbolValue interpret_block(Interpreter* in, StatementBlock*  s) {
+SymbolValue execute_block(Executor* ex, StatementBlock*  s) {
 	for (size_t i = 0; i < s->statement_count; ++i) {
-		interpreter_execute(in, s->statements[i]);
+		executor_execute(ex, s->statements[i]);
 	}
 	return nil;
 }
 
-SymbolValue interpret_description(Interpreter* in, StatementDescription* s) {
-	SymbolValue left = interpreter_execute(in, s->statement);
+SymbolValue execute_description(Executor* ex, StatementDescription* s) {
+	SymbolValue left = executor_execute(ex, s->statement);
 
 	for (size_t i = 0; i < s->block->block.statement_count; ++i) {
-		interpreter_execute(in, s->block->block.statements[i]);
+		executor_execute(ex, s->block->block.statements[i]);
 	}
 
 	return left;
 }
 
-SymbolValue interpret_chain(Interpreter* in, ExpressionChain* e) {
-	SymbolValue left = interpreter_evaluate(in, e->left);
-	interpreter_evaluate(in, e->right);
+SymbolValue execute_chain(Executor* ex, ExpressionChain* e) {
+	SymbolValue left = executor_evaluate(ex, e->left);
+	executor_evaluate(ex, e->right);
 	return left;
 }
 
-SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
-	SymbolValue callee = interpreter_evaluate(in, e->callee);
+SymbolValue execute_call(Executor* ex, ExpressionCall* e) {
+	SymbolValue callee = executor_evaluate(ex, e->callee);
 	Token callee_token = {
 		.type = TOKEN_IDENTIFIER,
 		.str.count = callee.string.count,
@@ -2780,37 +2829,31 @@ SymbolValue interpret_call(Interpreter* in, ExpressionCall* e) {
 	};
 
 	if (callee.type == SYMBOL_VALUE_NIL) {
-		interpreter_error(in, callee_token, "callee is nil");
+		executeer_error(ex, callee_token, "callee is nil");
 		return nil;
 	}
 	
 	if (callee.type != SYMBOL_VALUE_METHOD) {
-		interpreter_error(in, callee_token, "callee is not a method");
+		executeer_error(ex, callee_token, "callee is not a method");
 		return nil;
 	}
 
 	if (callee.method_type == METHOD_ECHO) {
-		SymbolValue arg = interpreter_evaluate(in, e->args[0]);
+		SymbolValue arg = executor_evaluate(ex, e->args[0]);
 		printf("%.*s\n",(int)arg.string.count, arg.string.items);
+	} else {
+		/* not sure
+		Expression expr = {
+			.type = EXPR_CALL,
+			.call = *e
+		};
+		return evaluator_evaluate(&ex->evaluator, &expr);
+		*/
 	}
 	return nil;
 }
 
 
-SymbolValue interpreter_lookup_variable(Interpreter* in, StringView sv, Expression* e) {
-	SymbolValue val = {0};
-	val.string.items = sv.items;
-	val.string.count = sv.count;
-	val.type = SYMBOL_VALUE_STRING;
-
-	MethodType m = method_extract(sv);
-	if (m != METHOD_NONE) {
-		val.type = SYMBOL_VALUE_METHOD;
-		val.method_type = m;
-	}
-
-	return val;
-}
 
 
 
@@ -2832,13 +2875,13 @@ static inline int execute_line(const char* line) {
 #endif
 }
 
-Executer executer_new(Arena* arena) {
-	Executer e = {0};
+Runner runner_new(Arena* arena) {
+	Runner e = {0};
 	e.arena = arena;
 	return e;
 }
 
-void execute_build_command(Executer* e, BuildCommand* bc, bool execute_lines) {
+void run_build_command(Runner* e, BuildCommand* bc, bool execute_lines) {
 	if (!bc || !bc->dirty) {
 		return;
 	}
@@ -2855,7 +2898,7 @@ void execute_build_command(Executer* e, BuildCommand* bc, bool execute_lines) {
 	}
 
 	for (size_t i = 0; i < bc->children.count; ++i) {
-		execute_build_command(e, bc->children.items[i], execute_lines);
+		run_build_command(e, bc->children.items[i], execute_lines);
 	}
 
 	bool already_executed = false;
@@ -2889,16 +2932,16 @@ void execute_build_command(Executer* e, BuildCommand* bc, bool execute_lines) {
 	}
 }
 
-void executer_dry_run(Executer* e, BuildCommand* root) {
-	e->built.count = 0;
-	e->executed.count = 0;
-	execute_build_command(e, root, false);
+void runner_dry_run(Runner* e, BuildCommand* root) {
+	//e->built.count = 0;
+	//e->executed.count = 0;
+	run_build_command(e, root, false);
 }
 
-void executer_execute(Executer* e, BuildCommand* root) {
-	e->built.count = 0;
-	e->executed.count = 0;
-	execute_build_command(e, root, true);
+void runner_execute(Runner* e, BuildCommand* root) {
+	//e->built.count = 0;
+	//e->executed.count = 0;
+	run_build_command(e, root, true);
 }
 
 
@@ -2974,7 +3017,6 @@ int cook(CookOptions op);
 
 
 
-
 int cook(CookOptions op) {
 	Lexer lexer = lexer_new(op.source);
 
@@ -2995,38 +3037,28 @@ int cook(CookOptions op) {
 		statement_print(root_statement, 1);
 	}
 
-	Constructor constructor = constructor_new(root_statement);
-	BuildCommand* root_build_command = constructor_construct_build_command(&constructor);
+	Planner planner = planner_new(root_statement);
+	BuildCommand* root_build_command = planner_construct_build_command(&planner);
 
-	if (op.build_all) {
+	if (op.dry_run || op.build_all) {
 		build_command_mark_all_children_dirty(root_build_command, true);
 	}
 
 	if (op.verbose > 0) {
 		printf("[cook] build command pretty:\n");
 		build_command_print(root_build_command, 0);
-	}
 
-	Interpreter interpreter = interpreter_new(root_build_command);
-	interpreter_interpret(&interpreter);
-
-	Executer e = executer_new(&interpreter.arena);
-
-	if (op.dry_run) {
-		if (op.verbose > 0) {
+		if (op.dry_run) {
 			printf("[cook] build command dump:\n");
 		}
-		build_command_mark_all_children_dirty(root_build_command, true);
-		executer_dry_run(&e, root_build_command);
-	} else {
-		executer_execute(&e, root_build_command);
 	}
 
-	arena_free(&interpreter.arena);
+	Executor executor = executor_new(root_build_command, op.dry_run);
+	executor_run(&executor);
+
+	arena_free(&executor.arena);
 	arena_free(&parser.arena);
-	arena_free(&constructor.arena);
-	free(e.executed.items);
-	free(e.built.items);
+	arena_free(&planner.arena);
 	return 0;
 }
 
@@ -3098,6 +3130,12 @@ int main(int argc, char** argv) {
 	}
 
 	StringBuilder source = {0};
+
+/* NOTE: tmp
+	filepath = "./dev";
+	op.build_all = true;
+	op.dry_run = true;
+*/
 
 	if (filepath) {
 		if (!read_entire_file(filepath, &source)) {

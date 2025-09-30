@@ -1,4 +1,4 @@
-#include "executer.h"
+#include "runner.h"
 #include "file.h"
 #include "build_command.h"
 #include "target.h"
@@ -18,13 +18,13 @@ static inline int execute_line(const char* line) {
 #endif
 }
 
-Executer executer_new(Arena* arena) {
-	Executer e = {0};
+Runner runner_new(Arena* arena) {
+	Runner e = {0};
 	e.arena = arena;
 	return e;
 }
 
-void execute_build_command(Executer* e, BuildCommand* bc, bool execute_lines) {
+void run_build_command(Runner* e, BuildCommand* bc, bool execute_lines) {
 	if (!bc || !bc->dirty) {
 		return;
 	}
@@ -41,7 +41,7 @@ void execute_build_command(Executer* e, BuildCommand* bc, bool execute_lines) {
 	}
 
 	for (size_t i = 0; i < bc->children.count; ++i) {
-		execute_build_command(e, bc->children.items[i], execute_lines);
+		run_build_command(e, bc->children.items[i], execute_lines);
 	}
 
 	bool already_executed = false;
@@ -75,16 +75,16 @@ void execute_build_command(Executer* e, BuildCommand* bc, bool execute_lines) {
 	}
 }
 
-void executer_dry_run(Executer* e, BuildCommand* root) {
-	e->built.count = 0;
-	e->executed.count = 0;
-	execute_build_command(e, root, false);
+void runner_dry_run(Runner* e, BuildCommand* root) {
+	//e->built.count = 0;
+	//e->executed.count = 0;
+	run_build_command(e, root, false);
 }
 
-void executer_execute(Executer* e, BuildCommand* root) {
-	e->built.count = 0;
-	e->executed.count = 0;
-	execute_build_command(e, root, true);
+void runner_execute(Runner* e, BuildCommand* root) {
+	//e->built.count = 0;
+	//e->executed.count = 0;
+	run_build_command(e, root, true);
 }
 
 

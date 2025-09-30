@@ -67,6 +67,12 @@ int main(int argc, char** argv) {
 
 	StringBuilder source = {0};
 
+/* NOTE: tmp
+	filepath = "./dev";
+	op.build_all = true;
+	op.dry_run = true;
+*/
+
 	if (filepath) {
 		if (!read_entire_file(filepath, &source)) {
 			return 1;

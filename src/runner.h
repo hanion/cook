@@ -13,11 +13,12 @@ typedef struct {
 	BuildCommandList executed;
 	BuiltList built;
 	Arena* arena;
-} Executer;
+} Runner;
 
-Executer executer_new(Arena* arena);
-void executer_dry_run(Executer* e, BuildCommand* root);
-void executer_execute(Executer* e, BuildCommand* root);
+Runner runner_new(Arena* arena);
+void runner_dry_run(Runner* e, BuildCommand* root);
+void runner_execute(Runner* e, BuildCommand* root);
+
 
 
 uint64_t get_modification_time_sv(StringView path);

@@ -1,0 +1,17 @@
+building main
+building inner
+building first
+cc -c -o firstchild.o firstchild.c 
+cc -c -o first.o first.c firstchild.o 
+built first
+building second
+building secondchild
+cc -c -o secondchild.o secondchild.c 
+built secondchild
+cc -c -o second.o second.c secondchild.o 
+built second
+cc -c -o inner.o inner.c first.o second.o 
+built inner
+cc -o main main.c inner.o 
+built main
+

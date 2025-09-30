@@ -5,9 +5,10 @@ output_dir(build)
 
 build(tester).build(file)
 
+
 build(cook) {
 	build(file, token, lexer, arena, parser, expression, statement, symbol,
-	   target, build_command, constructor, interpreter, executer, main)
+	   target, build_command, evaluator, planner, executor, runner, main)
 }
 
 

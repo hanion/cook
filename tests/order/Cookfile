@@ -1,0 +1,22 @@
+
+echo(building main)
+build(main) {
+	echo(building inner)
+	build(inner) {
+		echo(building first)
+		build(first).build(firstchild)
+		echo(built first)
+
+		echo(building second)
+		build(second) {
+			echo(building secondchild)
+			build(secondchild)
+			echo(built secondchild)
+		}
+		echo(built second)
+	}
+	echo(built inner)
+}
+echo(built main)
+
+
