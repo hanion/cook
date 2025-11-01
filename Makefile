@@ -1,6 +1,6 @@
 CC_LINUX = gcc
 CC_MINGW = x86_64-w64-mingw32-gcc
-CFLAGS   = -Wall -Werror -Wpedantic -g3 -static
+CFLAGS   = -Wall -Werror -Wpedantic -g3 -static -std=c11
 
 SRCS := src/file.c src/token.c src/lexer.c src/arena.c src/parser.c src/expression.c src/statement.c src/symbol.c src/target.c src/build_command.c src/evaluator.c src/planner.c src/executor.c  src/runner.c src/cook.c src/main.c
 OBJS := $(SRCS:src/%.c=build/%.o)
@@ -49,8 +49,12 @@ runm: $(MINGW_BIN)
 test: build/tester $(LINUX_BIN)
 	./build/tester
 
-cook.c: $(SRCS)
-	rm -f ./cook.c # build/cook
-	./amalgamator src/head.h $(SRCS) -I src -o cook.c
+
+build/amalgamator: util/amalgamator.c | build
+	gcc -o build/amalgamator util/amalgamator.c
+
+cook.c: $(SRCS) build/amalgamator
+	# rm -f build/cook
+	build/amalgamator src/head.h $(SRCS) -I src -o cook.c
 	#gcc -o build/cook cook.c
 
