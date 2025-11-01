@@ -23,7 +23,7 @@ SymbolValue execute_block      (Executor* ex, StatementBlock* s);
 
 
 Executor executor_new(BuildCommand* bc, bool dry_run) {
-	Executor ex = {};
+	Executor ex = {0};
 	ex.root_build_command = bc;
 	ex.dry_run = dry_run;
 	ex.current_environment = environment_new(&ex.arena);

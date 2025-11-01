@@ -2278,8 +2278,6 @@ SymbolValue evaluator_evaluate(Evaluator* ev, Expression* e);
 SymbolValue evaluator_lookup_variable(Evaluator* ev, Expression* e);
 
 
-static const SymbolValue nill = { .type = SYMBOL_VALUE_NIL };
-
 Evaluator evaluator_new(Environment** env) {
 	return (Evaluator){
 		.environment = env
@@ -2288,7 +2286,7 @@ Evaluator evaluator_new(Environment** env) {
 
 
 SymbolValue evaluator_evaluate(Evaluator* ev, Expression* e) {
-	if (!e) { return nill; }
+	if (!e) { return (SymbolValue){0}; }
 
 	switch (e->type) {
 		case EXPR_VARIABLE: return evaluator_lookup_variable(ev, e);
@@ -2301,7 +2299,7 @@ SymbolValue evaluator_evaluate(Evaluator* ev, Expression* e) {
 		}
 		default: break;
 	}
-	return nill;
+	return (SymbolValue){0};
 }
 
 
@@ -2720,7 +2718,7 @@ SymbolValue execute_block      (Executor* ex, StatementBlock* s);
 
 
 Executor executor_new(BuildCommand* bc, bool dry_run) {
-	Executor ex = {};
+	Executor ex = {0};
 	ex.root_build_command = bc;
 	ex.dry_run = dry_run;
 	ex.current_environment = environment_new(&ex.arena);
